@@ -29,3 +29,6 @@ out*/
 /._site/
 *.zip
 *.xcf
+
+# config.json
+config.json
