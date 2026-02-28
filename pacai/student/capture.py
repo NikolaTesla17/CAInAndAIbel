@@ -196,17 +196,14 @@ class Cain(Eve):
         # get legal actions for which agent it is currently the turn of
         
         # avoid valueError(agent_index < 0)
-        # first have to check if the current agent exists. if it was captured it won't be
-        # but I can at least make it fault resistant
+        # this happens when there's a game over, but i have no idea why game overs are happening
+        # just evaluate the state and return that
         if(state.agent_index < 0):
             # always keep this statement uncommented so we can try to track down the cause
             print("WARNING: Cain: Agent index %d did %s in depth %d resulting in state.agent_index = -1" % 
                   (state.last_agent_index, str(state.get_last_agent_action(state.last_agent_index)), (depth - 1)))
-            print(state.get_agent_indexes())
-            # rather than end this branch, try to keep evaluating with STOP as the only legal action
-            # -1 ends up as the state.agent_index for the rest of the recursion, but it has got to have relevant score
-            # however I do think this is wrong cause i should still be able to figure out whose turn would be after -1
-            actions = [Action("STOP")] # this is a list with just one item
+            cainVal, abelVal = self.evaluate(state)
+            return cainVal, abelVal
         else:
             actions = state.get_legal_actions()
         # score keeping variables. have to initalize all of them regardless for scope reasons, but only the relevant ones will be used
@@ -308,14 +305,14 @@ class Abel(Eve):
         print("Abel: tree called at depth %d with agent_index %d" % (depth, state.agent_index))
         # get legal actions for which agent it is currently the turn of
         # avoid valueError(agent_index < 0)
-        # first have to check if the current agent exists, although I have no idea why it wouldn't (it doesn't look like its the result of a capture)
-        # but I can at least make it fault resistant
+        # this happens when the game has ended, but I have no idea why this is happening so soon
         if(state.agent_index < 0):
             # always keep this statement uncommented so we can try to track down the cause
-            print("WARNING: Cain: Agent index %d did %s in depth %d resulting in state.agent_index = -1" % 
+            print("WARNING: Abel: Agent index %d did %s in depth %d resulting in state.agent_index = -1" % 
                   (state.last_agent_index, str(state.get_last_agent_action(state.last_agent_index)), (depth - 1)))
-            # rather than end this branch, try to keep evaluating with STOP as the only legal action
-            actions = [Action("STOP")]
+            # just eval and return that value for this node
+            cainVal, abelVal = self.evaluate(state)
+            return cainVal, abelVal
         else:
             actions = state.get_legal_actions()
         # score keeping variables. have to initalize all of them regardless for scope reasons, but only the relevant ones will be used
