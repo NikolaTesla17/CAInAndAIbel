@@ -37,11 +37,6 @@ class Eve(pacai.core.agent.Agent):
         super().__init__(**kwargs)
         # weights will be hardcoded in the source code
         # currently at arbitary values for testing
-        # self.cainWeights = {"bias": 0,
-        #                     "close-ghosts-count": 2.0, # cain should be near enemy ghosts
-        #                     "close-food-count": 1,
-        #                     "closest-food": 1.3
-        # }
         self.cainWeights = {
             "bias": 0.0,
             # offense
@@ -51,31 +46,21 @@ class Eve(pacai.core.agent.Agent):
             # safety vs defenders
             "dist-to-nearest-defender": 2.0, # farther from defenders is better
             "close-defenders-count": -3.0,   # being near defenders is bad
-
-            # defense-related features mostly irrelevant for Cain
+            # defens irrelevant for Cain
             "num-invaders": 0.0,
             "dist-to-nearest-invader": 0.0,
         }
 
-        # self.abelWeights = {"bias": 0,
-        #                     "close-ghosts-count": -2.0, # abel should avoid them
-        #                     "close-food-count": 1,
-        #                     "closest-food": 1.2}
         self.abelWeights = {
             "bias": 0.0,
-
             # defense
             "num-invaders": 8.0,             # invaders bad
             "dist-to-nearest-invader": -6.0, # closer to invader is better
-            # optional: Abel can also prefer to be closer to invaders even when none seen (keeps him roaming)
-            # keep as-is for now
 
-            # offense features irrelevant for Abel
+            # offense irrelevant for Abel
             "dist-to-enemy-food": 0.0,
             "enemy-food-left": 0.0,
             "close-food-count": 0.0,
-
-            # defender features irrelevant for Abel
             "dist-to-nearest-defender": 0.0,
             "close-defenders-count": 0.0,
         }
@@ -107,7 +92,7 @@ class Eve(pacai.core.agent.Agent):
         my_pos = state.get_agent_position(me)
 
         if my_pos is None:
-            # Can't compute distances; return safe defaults.
+            # if dead
             return {
                 "bias": 1.0,
                 "num-invaders": 0.0,
@@ -133,12 +118,6 @@ class Eve(pacai.core.agent.Agent):
         me = self.own_index
         my_pos = state.get_agent_position(me)
 
-        # enemy_states = []
-        
-        # for idx, st in state.get_opponent_positions().items():
-        #     enemy_states.append((idx, st))
-
-
         ## find those filthy philistines
         philistine_positions = state.get_opponent_positions()  # dict[int, pos] containes all opponents
         invader_positions  = state.get_invader_positions()   # dict[int, pos] contains opponents on our side
@@ -149,7 +128,6 @@ class Eve(pacai.core.agent.Agent):
                 continue
             if idx not in invader_positions:   # if they ain't with us...
                 defenders.append((idx, pos))   # contains all opponents not on our side
-                # defender_positions.appeand() # for trouble shooting, refactor to delete
         # --- Defense features ---
         features["num-invaders"] = float(len(invader_positions))
         if invader_positions:
@@ -182,12 +160,6 @@ class Eve(pacai.core.agent.Agent):
         else:
             features["dist-to-enemy-food"] = 1.0
             features["enemy-food-left"] = 0.0
-
-
-        # ghost_distances = [distances.get_distance_default(state.get_agent_position(self.own_index), position, max_distance) for position in state.get_ghost_positions().values()]
-        # food_distances = [distances.get_distance_default(state.get_agent_position(self.own_index), position, max_distance) for position in state.get_food()]
-        # close_ghosts = [distance for distance in ghost_distances if (distance <= CLOSE_GHOST_DISTANCE)]
-        # close_food = [distance for distance in food_distances if (distance <= CLOSE_FOOD_DISTANCE)]
 
         # close defenders (danger for Cain)
         close_defenders = 0
