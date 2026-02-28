@@ -9,6 +9,7 @@ import pacai.capture.team
 import pacai.util.alias
 import pacai.core.agent
 import typing
+import pacai.core.gamestate
 
 
 def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
@@ -51,12 +52,30 @@ class Cain(Eve):
         # needs to find a way to figure out what the index of Abel is 
         self.brother_index = None
     
+    # gets a list of the best actions, picks randomly if more than one
+    def get_action(self, state: GameState) -> Action:
+        action = self.tree(state, 0)
+        return action
+
+    # recursively does the t
+    def tree(self, state: GameState, depth):
+        actions = state.get_legal_actions()
+        bestScore = float('-inf')
+
+
+
+# Abel is the defensive agent
+class Abel(Eve):
+    def __init__(self, **kwargs: typing.Any) -> None:
+        super().__init__(**kwargs)
+        # doesn't need to know the weights
+        # needs to find a way to figure out what the index of Abel is 
+        self.brother_index = None
+    
     def get_action(self, state: GameState) -> Action:
         # run a tree evaluating the different actions, maxing based on their cainScore
         pass
 
-    def tree(self, state) -> pacai.core.action.Action
-
-# Abel is the defensive agent
-class Abel(Eve):
-    pass
+    def tree(self, state) -> Action:
+        # each tree has to be different because the root node is different
+        pass
