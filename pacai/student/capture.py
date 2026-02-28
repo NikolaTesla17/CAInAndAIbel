@@ -37,15 +37,48 @@ class Eve(pacai.core.agent.Agent):
         super().__init__(**kwargs)
         # weights will be hardcoded in the source code
         # currently at arbitary values for testing
-        self.cainWeights = {"bias": 0,
-                            "close-ghosts-count": 2.0, # cain should be near enemy ghosts
-                            "close-food-count": 1,
-                            "closest-food": 1.3
+        # self.cainWeights = {"bias": 0,
+        #                     "close-ghosts-count": 2.0, # cain should be near enemy ghosts
+        #                     "close-food-count": 1,
+        #                     "closest-food": 1.3
+        # }
+        self.cainWeights = {
+            "bias": 0.0,
+            # offense
+            "dist-to-enemy-food": -4.0,      # closer to food is better
+            "enemy-food-left": -1.0,         # fewer left is better
+            "close-food-count": 1.5,         # more nearby food is gooder
+            # safety vs defenders
+            "dist-to-nearest-defender": 2.0, # farther from defenders is better
+            "close-defenders-count": -3.0,   # being near defenders is bad
+
+            # defense-related features mostly irrelevant for Cain
+            "num-invaders": 0.0,
+            "dist-to-nearest-invader": 0.0,
         }
-        self.abelWeights = {"bias": 0,
-                            "close-ghosts-count": -2.0, # abel should avoid them
-                            "close-food-count": 1,
-                            "closest-food": 1.2}
+
+        # self.abelWeights = {"bias": 0,
+        #                     "close-ghosts-count": -2.0, # abel should avoid them
+        #                     "close-food-count": 1,
+        #                     "closest-food": 1.2}
+        self.abelWeights = {
+            "bias": 0.0,
+
+            # defense
+            "num-invaders": 8.0,             # invaders bad
+            "dist-to-nearest-invader": -6.0, # closer to invader is better
+            # optional: Abel can also prefer to be closer to invaders even when none seen (keeps him roaming)
+            # keep as-is for now
+
+            # offense features irrelevant for Abel
+            "dist-to-enemy-food": 0.0,
+            "enemy-food-left": 0.0,
+            "close-food-count": 0.0,
+
+            # defender features irrelevant for Abel
+            "dist-to-nearest-defender": 0.0,
+            "close-defenders-count": 0.0,
+        }
         self.brother_index = None
         self.own_index = None
 
@@ -68,6 +101,7 @@ class Eve(pacai.core.agent.Agent):
             abelVal = abelVal + (val * self.abelWeights[f])  
         return cainVal, abelVal
     
+    # will need to fix weights 
     def feature_extractor(self, state: GameState) -> dict[str, float]:
         # returns a dictionary of the features extracted, whatever they're going to be
         # this is currently a dummy feature extractor copied from pacman's simple feature extractor
@@ -80,24 +114,79 @@ class Eve(pacai.core.agent.Agent):
         # this does make the results kind of shit for the designed purpose as there won't be consistent results for cain v abel
         # based on who is calling, but this is just for testing
         max_distance = float(state.board.width * state.board.height)
-        ghost_distances = [distances.get_distance_default(state.get_agent_position(self.own_index), position, max_distance) for position in state.get_ghost_positions().values()]
-        food_distances = [distances.get_distance_default(state.get_agent_position(self.own_index), position, max_distance) for position in state.get_food()]
-        close_ghosts = [distance for distance in ghost_distances if (distance <= CLOSE_GHOST_DISTANCE)]
-        close_food = [distance for distance in food_distances if (distance <= CLOSE_FOOD_DISTANCE)]
+        
+        me = self.own_index
+        my_pos = state.get_agent_position(me)
 
-        # If there are ghosts that are close, don't care about close food.
-        if (len(close_ghosts) > 0):
-            features['close-ghosts-count'] = len(close_ghosts)
+        # enemy_states = []
+        
+        # for idx, st in state.get_opponent_positions().items():
+        #     enemy_states.append((idx, st))
+
+
+        ## find those filthy philistines
+        philistine_positions = state.get_opponent_positions()  # dict[int, pos] containes all opponents
+        invader_positions  = state.get_invader_positions()   # dict[int, pos] contains opponents on our side
+
+        defenders = []
+        for idx, pos in philistine_positions.items():
+            if pos is None:
+                continue
+            if idx not in invader_positions:   # if they ain't with us...
+                defenders.append((idx, pos))   # contains all opponents not on our side
+
+        # --- Defense features ---
+        features["num-invaders"] = float(len(invader_positions))
+        if invader_positions:
+            d = min(distances.get_distance(my_pos, pos, max_distance)
+                    for pos in invader_positions.values()
+                    if pos is not None)
+            features["dist-to-nearest-invader"] = d / max_distance
         else:
-            features['close-food-count'] = len(close_food)
+            features["dist-to-nearest-invader"] = 1.0  # none seen
 
-        # Favor being close to food (don't count food we are eating).
-        # Normalize by the max distance.
-        closest_food = max_distance
-        for food_distance in food_distances:
-            closest_food = min(closest_food, food_distance)
+        # --- Offense danger features (enemy defenders) ---
+        if defenders:
+            d = min(distances.get_distance(my_pos, pos, max_distance)
+                    for (_, pos) in defenders)
+            features["dist-to-nearest-defender"] = d / max_distance
+        else:
+            features["dist-to-nearest-defender"] = 1.0
 
-        features['closest-food'] = closest_food / max_distance
+        #TODO: add scared logic here so that we're not running away from scared ghosts
+        # --- Food features ---
+        food = state.get_food(agent_index=me)
+        if food:
+            d = min(
+                distances.get_distance_default(my_pos, fpos, max_distance)
+                for fpos in food
+            )
+            features["dist-to-enemy-food"] = d / max_distance
+            features["enemy-food-left"] = float(len(food)) / 50.0
+        else:
+            features["dist-to-enemy-food"] = 1.0
+            features["enemy-food-left"] = 0.0
+
+
+        # ghost_distances = [distances.get_distance_default(state.get_agent_position(self.own_index), position, max_distance) for position in state.get_ghost_positions().values()]
+        # food_distances = [distances.get_distance_default(state.get_agent_position(self.own_index), position, max_distance) for position in state.get_food()]
+        # close_ghosts = [distance for distance in ghost_distances if (distance <= CLOSE_GHOST_DISTANCE)]
+        # close_food = [distance for distance in food_distances if (distance <= CLOSE_FOOD_DISTANCE)]
+
+        # close defenders (danger for Cain)
+        close_defenders = 0
+        for (_, pos) in defenders:
+            if distances.get_distance_default(my_pos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
+                close_defenders += 1
+        features["close-defenders-count"] = float(close_defenders)
+
+        # close food (opportunity for Cain)
+        food_positions = state.get_food(agent_index=me)
+        close_food = 0
+        for fpos in food_positions:
+            if distances.get_distance_default(my_pos, fpos, max_distance) <= CLOSE_FOOD_DISTANCE:
+                close_food += 1
+        features["close-food-count"] = float(close_food)
 
         # Lower all features for better optimization.
         for (key, value) in list(features.items()):
