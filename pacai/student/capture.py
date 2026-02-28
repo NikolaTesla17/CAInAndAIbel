@@ -103,6 +103,21 @@ class Eve(pacai.core.agent.Agent):
     
     # will need to fix weights 
     def feature_extractor(self, state: GameState) -> dict[str, float]:
+        me = self.own_index
+        my_pos = state.get_agent_position(me)
+
+        if my_pos is None:
+            # Can't compute distances; return safe defaults.
+            return {
+                "bias": 1.0,
+                "num-invaders": 0.0,
+                "dist-to-nearest-invader": 0.0,
+                "dist-to-nearest-defender": 0.0,
+                "dist-to-enemy-food": 0.0,
+                "enemy-food-left": 0.0,
+                "close-defenders-count": 0.0,
+                "close-food-count": 0.0,
+            }
         # returns a dictionary of the features extracted, whatever they're going to be
         # this is currently a dummy feature extractor copied from pacman's simple feature extractor
         # doesn't utilize the provided features library
@@ -134,11 +149,11 @@ class Eve(pacai.core.agent.Agent):
                 continue
             if idx not in invader_positions:   # if they ain't with us...
                 defenders.append((idx, pos))   # contains all opponents not on our side
-
+                # defender_positions.appeand() # for trouble shooting, refactor to delete
         # --- Defense features ---
         features["num-invaders"] = float(len(invader_positions))
         if invader_positions:
-            d = min(distances.get_distance(my_pos, pos, max_distance)
+            d = min(distances.get_distance_default(my_pos, pos, max_distance)
                     for pos in invader_positions.values()
                     if pos is not None)
             features["dist-to-nearest-invader"] = d / max_distance
@@ -147,8 +162,9 @@ class Eve(pacai.core.agent.Agent):
 
         # --- Offense danger features (enemy defenders) ---
         if defenders:
-            d = min(distances.get_distance(my_pos, pos, max_distance)
-                    for (_, pos) in defenders)
+            d = min(distances.get_distance_default(my_pos, pos, max_distance)
+                    for (_, pos) in defenders
+                    if pos is not None)
             features["dist-to-nearest-defender"] = d / max_distance
         else:
             features["dist-to-nearest-defender"] = 1.0
