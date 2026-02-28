@@ -139,7 +139,7 @@ class Eve(pacai.core.agent.Agent):
         elif self.own_index == 1:
             self.brother_index = 3
         elif self.own_index == 3:
-            self.own_index = 1
+            self.brother_index = 1# should this be self.brother_index?
         else:
             print("Fatal error: set_indexes called when state.agent_index was %d" % (state.agent_index))
     
