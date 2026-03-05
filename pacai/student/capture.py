@@ -35,34 +35,62 @@ class Eve(pacai.core.agent.Agent):
             **kwargs: typing.Any) -> None:
         
         super().__init__(**kwargs)
-        # weights will be hardcoded in the source code
-        # currently at arbitary values for testing
+        # Since there seems to be some confusion, the higher the evaluate score the better
+        # remember, even if something is bad overall, if the agent can't make a decision to effect it doesn't matter to their evaluation
+        # the double evaluation is just to allow it to make a more accurate prediction of the future
         self.cainWeights = {
-            "bias": 0.0,
             # offense
-            "dist-to-enemy-food": -4.0,      # closer to food is better
+            "cain-dist-to-enemy-food": -4.0,      # closer to food is better
             "enemy-food-left": -1.0,         # fewer left is better
-            "close-food-count": 1.5,         # more nearby food is gooder
+            "cain-close-food-count": 1.5,         # more nearby food is gooder
             # safety vs defenders
-            "dist-to-nearest-defender": 2.0, # farther from defenders is better
-            "close-defenders-count": -3.0,   # being near defenders is bad
-            # defens irrelevant for Cain
+            "cain-dist-to-nearest-nonscared-defender": 2.0, # farther from defenders is better
+            "cain-dist-to-nearest-scared-defender": -2.0, # unless they're scared
+            "cain-close-nonscared-defenders-count": -3.0,   # being near defenders is bad
+            "cain-close-scared-defenders-count": 3.0, # unless they're scared
+            "scared-defenders-extant": 1.2, # all extant scared defenders
+            # defense irrelevant for Cain
             "num-invaders": 0.0,
             "dist-to-nearest-invader": 0.0,
+            "abel-dist-to-nearest-nonscared-invader": 0.0,
+            "abel-dist-to-nearest-scared-invader": 0.0,
+            "abel-close-nonscared-invaders-count": 0.0,
+            "abel-close-scared-invaders-count": 0.0,
+
+            "normalized-score": 15.0, # the actual score is extremely important 
+            "cain-correct-zone": 10.0, # important to be in the correct zone
+            "abel-correct-zone": 0.0, # but it doesn't matter to cain if abel is in the correct zone or not
+            "abel-afraid": 0.0, # same if he's afraid
+            "cain-afraid": -0.3, # cain shouldn't care all that much if he should be afraid because that doesn't effect pacmen
+            "abel-dead": 0.0,
+            "cain-dead": -10.0, # being dead is bad. but because of quick respawn isn't as important as the score
         }
 
         self.abelWeights = {
-            "bias": 0.0,
             # defense
-            "num-invaders": 8.0,             # invaders bad
-            "dist-to-nearest-invader": -6.0, # closer to invader is better
-
+            "num-invaders": -1.0,             # invaders bad
+            "abel-dist-to-nearest-nonscared-invader": -6.0, # closer to invader is better
+            "abel-dist-to-nearest-scared-invader": 6.0, # unless abel is scared
+            "abel-close-nonscared-invaders-count": 3.0, # same idea with these values
+            "abel-close-scared-invaders-count": -3.0,
             # offense irrelevant for Abel
-            "dist-to-enemy-food": 0.0,
+            "cain-dist-to-nearest-nonscared-defender": 0.0,
+            "cain-dist-to-nearest-scared-defender": 0.0,
+            "cain-dist-to-enemy-food": 0.0,
             "enemy-food-left": 0.0,
-            "close-food-count": 0.0,
-            "dist-to-nearest-defender": 0.0,
-            "close-defenders-count": 0.0,
+            "cain-close-nonscared-defenders-count": 0.0,
+            "cain-close-scared-defenders-count": 0.0,
+            "scared-defenders-extant": 0.0,
+            "cain-close-food-count": 0.0,
+
+            "normalized-score": 15.0, # score extremely important
+            "cain-correct-zone": 0.0, # 1/0 if cain is in the enemy area
+            "abel-correct-zone": 10.0, # 1/0 if abel is in the enemy area
+            "abel-afraid": -3.0, # as a defender, abel cares much more about being afraid
+            "cain-afraid": 0.0, # 1/0 if cain is afraid
+            "abel-dead": -10.0, #1/0 if abel is dead
+            "cain-dead": 0.0, #1/0 if cain is dead
+                
         }
         self.brother_index = None
         self.own_index = None
@@ -86,123 +114,196 @@ class Eve(pacai.core.agent.Agent):
             abelVal = abelVal + (val * self.abelWeights[f])  
         return cainVal, abelVal
     
-    # will need to fix weights 
+    # extracts the relevant features from state
+    # self is the agent who is at the top of the stack calling this to decide what action to take next. Could be cain or abel
+    # the agent from state is who is at the bottom of the tree, and is irrelevant
     def feature_extractor(self, state: GameState) -> dict[str, float]:
-        me = self.own_index
-        my_pos = state.get_agent_position(me)
-
-        if my_pos is None:
-            # if dead
-            return {
-                "bias": 1.0,
+        # default version of the dictionary with placeholder values so what is used is easily referenced
+        features: dict[str, float] = {
                 "num-invaders": 0.0,
-                "dist-to-nearest-invader": 0.0,
-                "dist-to-nearest-defender": 0.0,
-                "dist-to-enemy-food": 0.0,
+                "abel-dist-to-nearest-nonscared-invader": 0.0, # slight misnomer, "scared" here refers to abel, not the invader
+                "abel-dist-to-nearest-scared-invader": 0.0, # we're not just * -1 them in case it turns out they would be best with different weights
+                "cain-dist-to-nearest-nonscared-defender": 0.0,
+                "cain-dist-to-nearest-scared-defender": 0.0,
+                "cain-dist-to-enemy-food": 0.0,
                 "enemy-food-left": 0.0,
-                "close-defenders-count": 0.0,
-                "close-food-count": 0.0,
-            }
-        # returns a dictionary of the features extracted, whatever they're going to be
-        # this is currently a dummy feature extractor copied from pacman's simple feature extractor
-        # doesn't utilize the provided features library
-        features: dict[str, float] = {}
-        
-        # Always add in a bias term.
-        features['bias'] = 1.0
-        distances = self._get_distances(state, self) # self is use the calling agent
-        # this does make the results kind of shit for the designed purpose as there won't be consistent results for cain v abel
-        # based on who is calling, but this is just for testing
+                "cain-close-nonscared-defenders-count": 0.0,
+                "cain-close-scared-defenders-count": 0.0,
+                "abel-close-nonscared-invaders-count": 0.0,
+                "abel-close-scared-invaders-count": 0.0,
+                "cain-close-food-count": 0.0,
+                "normalized-score": 0.0,
+                "cain-correct-zone": 0.0, # 1/0 if cain is in the enemy area
+                "abel-correct-zone": 0.0, # 1/0 if abel is in the enemy area
+                "abel-afraid": 0.0, # 1/0 if abel is afraid
+                "cain-afraid": 0.0, # 1/0 if cain is afraid
+                "abel-dead": 0.0, #1/0 if abel is dead
+                "cain-dead": 0.0, #1/0 if cain is dead
+                "scared-defenders-extant": 0.0, # all extant scared defenders
+                # these binary values are expected to have relatively high positive or negative weights
+        }
+
+        distances = _get_distances(state, self) # this stores precomputed distances in the memory of the agent
+        # unless I've really messed up my understanding, its the literal distances between the spaces and thus the agent passed is
+        # only for assigning where to store this value. So it can be used with the pos from both cainIndex and abelIndex
         max_distance = float(state.board.width * state.board.height)
         
-        me = self.own_index
-        my_pos = state.get_agent_position(me)
+        # figure out the indexes of Cain and Abel, regardless of who calls
+        cainIndex: int | None = None
+        abelIndex: int |None = None
+        if(isinstance(self, Cain)):
+            cainIndex = self.own_index
+            abelIndex = self.brother_index
+        else:
+            cainIndex = self.brother_index
+            abelIndex = self.own_index
 
-        ## find those filthy philistines
-        philistine_positions = state.get_opponent_positions()  # dict[int, pos] containes all opponents
-        invader_positions  = state.get_invader_positions()   # dict[int, pos] contains opponents on our side
+        score = state.get_normalized_score(self.own_index) # get score that is always positive in our own direction
+        # self.own_index has to be typed to int | None, so pylance is always going to be angry. but there should never be a situation
+        # where it reaches this function as None
+        features["score"] = score
 
-        defenders = []
+        # find all opponents, divided by side and if they're scared
+        # since the index parameter is just for team, can use own_index
+        philistine_positions = state.get_nonscared_opponent_positions(self.own_index)
+        scared_philistine_positions = state.get_scared_opponent_positions(self.own_index)
+        invader_positions  = state.get_invader_positions(self.own_index)
+        # all these get_[]_positions return list of (index, pos)
+        # invaders don't get scared, you do
+
+        nonscared_defenders = []
         for idx, pos in philistine_positions.items():
             if pos is None:
                 continue
-            if idx not in invader_positions:   # if they ain't with us...
-                defenders.append((idx, pos))   # contains all opponents not on our side
-        # --- Defense features ---
-        features["num-invaders"] = float(len(invader_positions))
-        if invader_positions:
-            d = min(distances.get_distance_default(my_pos, pos, max_distance)
+            if idx not in invader_positions and state.is_ghost(idx):
+                nonscared_defenders.append((idx, pos))
+
+        scared_defenders = []
+        for idx, pos in scared_philistine_positions.items():
+            if pos is None:
+                continue
+            if idx not in invader_positions and state.is_ghost(idx):
+                scared_defenders.append((idx, pos))
+
+        # before calcuating defense features, see if Abel is even alive
+        abelpos = state.get_agent_position(abelIndex)
+        if abelpos is None:
+            features["abel-dead"] = 1.0
+            # if this is the case, the abel related features don't have values assigned to them
+            # their default values of 0.0 are fine
+        else:
+            if state.is_scared(abelIndex):
+                features["abel-afraid"] = 1.0
+                # leaving the binary features to their default value for the "no" answer is fine, as they're already 0.0
+            if state.is_ghost(abelIndex):
+                features["abel-correct-zone"] = 1.0
+            # --- Defense features ---
+            features["num-invaders"] = float(len(invader_positions))
+            if invader_positions:
+                d = min(distances.get_distance_default(abelpos, pos, max_distance)
                     for pos in invader_positions.values()
                     if pos is not None)
-            features["dist-to-nearest-invader"] = d / max_distance
+                # assign to the apporpirate feature. irrelevant features are already assigned to 0.0
+                if state.is_scared(abelIndex):
+                    features["abel-dist-to-nearest-scared-invader"] = d / max_distance
+                else:
+                    features["abel-dist-to-nearest-nonscared-invader"] = d / max_distance
+                
+                # close invaders, either good or bad depending on if abel is currently scared, so they exist differently
+                close_invaders = 0
+                for _, pos in invader_positions.items():
+                    if distances.get_distance_default(abelpos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
+                        close_invaders += 1
+                if(state.is_scared(abelIndex)):
+                    features["abel-close-scared-invaders-count"] = float(close_invaders)
+                else:
+                    features["abel-close-nonscared-invaders-count"] = float(close_invaders)
+
+
+
+        # first see if Cain is even alive before computing his relevant stats
+        cainpos = state.get_agent_position(cainIndex)
+        if cainpos is None:
+            features["cain-dead"] = 1.0
         else:
-            features["dist-to-nearest-invader"] = 1.0  # none seen
+            if state.is_scared(cainIndex):
+                features["cain-afraid"] = 1.0
+            if state.is_ghost(cainIndex) == False:
+                features["cain-correct-zone"] = 1.0
+            # --- Offense danger features (enemy defenders) ---
+            if nonscared_defenders:
+                d = min(distances.get_distance_default(cainpos, pos, max_distance)
+                        for (_, pos) in nonscared_defenders
+                        if pos is not None)
+                features["cain-dist-to-nearest-nonscared-defender"] = d / max_distance
+            # the reason for this logic being different is on defender there's only one abel to be scared, but if a ghost dies before the
+            # scared timer runs out it will respawn not scared
+            features["scared-defenders-extant"] = float(len(scared_defenders) > 0)
+            if scared_defenders:
+                d = min(distances.get_distance_default(cainpos, pos, max_distance)
+                        for (_, pos) in scared_defenders
+                        if pos is not None)
+                features["cain-dist-to-nearest-scared-defender"] = d / max_distance
+            # this is also only relevant to cain
+            # --- Food features ---
+            food = state.get_food(cainIndex)
+            if food:
+                d = min(
+                    distances.get_distance_default(cainpos, fpos, max_distance)
+                    for fpos in food
+                )
+                features["cain-dist-to-enemy-food"] = d / max_distance
+                features["enemy-food-left"] = float(len(food)) / 50.0 # not sure what this extra division here is for, but I'll leave it
 
-        # --- Offense danger features (enemy defenders) ---
-        if defenders:
-            d = min(distances.get_distance_default(my_pos, pos, max_distance)
-                    for (_, pos) in defenders
-                    if pos is not None)
-            features["dist-to-nearest-defender"] = d / max_distance
-        else:
-            features["dist-to-nearest-defender"] = 1.0
 
-        #TODO: add scared logic here so that we're not running away from scared ghosts
-        # --- Food features ---
-        food = state.get_food(agent_index=me)
-        if food:
-            d = min(
-                distances.get_distance_default(my_pos, fpos, max_distance)
-                for fpos in food
-            )
-            features["dist-to-enemy-food"] = d / max_distance
-            features["enemy-food-left"] = float(len(food)) / 50.0
-        else:
-            features["dist-to-enemy-food"] = 1.0
-            features["enemy-food-left"] = 0.0
+            # close defenders (danger (or opportuinity if they're scared!) for Cain)
+            close_nonscared_defenders = 0
+            for (_, pos) in nonscared_defenders:
+                if distances.get_distance_default(cainpos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
+                    close_nonscared_defenders += 1
+            features["cain-close-nonscared-defenders-count"] = float(close_nonscared_defenders)
+            close_scared_defenders = 0
+            for (_, pos) in scared_defenders:
+                if distances.get_distance_default(cainpos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
+                    close_scared_defenders += 1
+            features["cain-close-nonscared-defenders-count"] = float(close_scared_defenders)
 
-        # close defenders (danger for Cain)
-        close_defenders = 0
-        for (_, pos) in defenders:
-            if distances.get_distance_default(my_pos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
-                close_defenders += 1
-        features["close-defenders-count"] = float(close_defenders)
+            # close food (opportunity for Cain)
+            food_positions = state.get_food(cainIndex)
+            close_food = 0
+            for fpos in food_positions:
+                if distances.get_distance_default(cainpos, fpos, max_distance) <= CLOSE_FOOD_DISTANCE:
+                    close_food += 1
+            features["cain-close-food-count"] = float(close_food)
 
-        # close food (opportunity for Cain)
-        food_positions = state.get_food(agent_index=me)
-        close_food = 0
-        for fpos in food_positions:
-            if distances.get_distance_default(my_pos, fpos, max_distance) <= CLOSE_FOOD_DISTANCE:
-                close_food += 1
-        features["close-food-count"] = float(close_food)
-
-        # Lower all features for better optimization.
-        for (key, value) in list(features.items()):
-            features[key] = value / 10.0
+        # thing from the dummy extractor I don't think we want to use, but I'm keeping it here just in case it turns out we do
+        # ""Lower all features for better optimization.""
+        #for (key, value) in list(features.items()):
+            #features[key] = value / 10.0
 
         return features
 
-
-    # helper function copied for dummy feature extractor
-    def _get_distances(self,
+def _get_distances(
         state: pacai.core.gamestate.GameState,
         agent: pacai.core.agent.Agent | None = None) -> pacai.search.distance.DistancePreComputer:
-        distances = None
+    distances = None
 
-        # If there is an agent, get precomputed distances from it.
-        if (agent is not None):
-            distances = agent.extra_storage.get('distances', None)
+    # If there is an agent, get precomputed distances from it.
+    if (agent is not None):
+        distances = agent.extra_storage.get('distances', None)
 
-        # Compute distances if we have none.
-        if (distances is None):
-            distances = pacai.search.distance.DistancePreComputer()
-            distances.compute(state.board)
+    # Compute distances if we have none.
+    if (distances is None):
+        distances = pacai.search.distance.DistancePreComputer()
+        distances.compute(state.board)
 
-        # Save the distances in the agent (if possible).
-        if (agent is not None):
-            agent.extra_storage['distances'] = distances
+    # Save the distances in the agent (if possible).
+    if (agent is not None):
+        agent.extra_storage['distances'] = distances
 
-        return distances
+    return distances
+
+
     
     # to be called by a get_action when own indexes are unknown
     def set_indexes(self, state: GameState):
