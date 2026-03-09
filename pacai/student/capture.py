@@ -473,10 +473,30 @@ class Cain(Eve):
                     bestAbel = abelVal
                     bestCain.clear()
                     bestCain.append(cainVal)
+            # elif state.agent_index == self.own_index:
+            #     print(
+            #         "Cain: Fatal Error: tree() called with state where Cain was current agent")
+            #     return 0.0, 0.0
+            # pretty sure this is not a fundemental error and we just need to evaluate our turn how we have been not return 0
             elif state.agent_index == self.own_index:
-                print(
-                    "Cain: Fatal Error: tree() called with state where Cain was current agent")
-                return 0.0, 0.0
+                bestCain = float('-inf')
+                bestAbels = []
+
+                for a in actions:
+                    new_state = state.generate_successor(a)
+
+                    if depth == MAX_DEPTH:
+                        cainVal, abelVal = self.evaluate(new_state)
+                    else:
+                        cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                    if cainVal > bestCain:
+                        bestCain = cainVal
+                        bestAbels = [abelVal]
+                    elif cainVal == bestCain:
+                        bestAbels.append(abelVal)
+
+                return bestCain, (sum(bestAbels) / len(bestAbels))
             else:  # if it is the opponent, append scores to list for future expectimaxing
                 scoreTuples.append((cainVal, abelVal))
 
@@ -558,7 +578,7 @@ class Abel(Eve):
     # get_action is top node of the tree
     # see the almost identical version of this code in Cain for more detailed
     # comments
-    def tree(self, state: GameState, depth) -> tuple[float, float]:
+    def tree(self, state: GameState, depth) -> tuple[float, float]: # tree needs to be rewritten for both agents so that we can stop wasting recursions and loops on the self evaluation case
         # print("Abel: tree called at depth %d with agent_index %d" % (depth, state.agent_index))
         # get legal actions for which agent it is currently the turn of
         # avoid valueError(agent_index < 0)
@@ -604,10 +624,30 @@ class Abel(Eve):
                     bestCain = cainVal
                     bestAbel.clear()
                     bestAbel.append(abelVal)
+            # elif state.agent_index == self.own_index:
+            #     print(
+            #         "Abel: Fatal Error: tree() called with state where Abel was current agent")
+            #     return 0.0, 0.0
+            # same as cain, I dont think this an issue
             elif state.agent_index == self.own_index:
-                print(
-                    "Abel: Fatal Error: tree() called with state where Abel was current agent")
-                return 0.0, 0.0
+                bestAbel = float('-inf')
+                bestCains = []
+
+                for a in actions:
+                    new_state = state.generate_successor(a)
+
+                    if depth == MAX_DEPTH:
+                        cainVal, abelVal = self.evaluate(new_state)
+                    else:
+                        cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                    if abelVal > bestAbel:
+                        bestAbel = abelVal
+                        bestCains = [cainVal]
+                    elif abelVal == bestAbel:
+                        bestCains.append(cainVal)
+
+                return (sum(bestCains) / len(bestCains)), bestAbel
             else:  # if it is the opponent, append scores to list for future expectimaxing
                 scoreTuples.append((cainVal, abelVal))
 
