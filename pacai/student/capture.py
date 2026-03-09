@@ -11,7 +11,7 @@ import pacai.core.agent
 import typing
 import pacai.core.gamestate
 import pacai.search.distance
-MAX_DEPTH = 3
+MAX_DEPTH = 1
 
 # constants for the copied dummy feature extractor
 CLOSE_GHOST_DISTANCE: float = 1.0
@@ -255,7 +255,7 @@ class Eve(pacai.core.agent.Agent):
         else:
             if state.is_scared(cainIndex):
                 features["cain-afraid"] = 1.0
-            if state.is_ghost(cainIndex) == False:
+            if not state.is_ghost(cainIndex):
                 features["cain-correct-zone"] = 1.0
             # --- Offense danger features (enemy defenders) ---
             if nonscared_defenders:
@@ -378,11 +378,12 @@ class Cain(Eve):
 
         # get action will act as the top layer for the tree, since return types
         # differ
-        actions = state.get_legal_actions() # below is trying to stop STOP from running all the time
+        # below is trying to stop STOP from running all the time
+        actions = state.get_legal_actions()
         # actions = [a for a in state.get_legal_actions() if str(a) != 'STOP']
         # if not actions:
         #     actions = state.get_legal_actions()
-        print("abel all actions: %s" % (str(actions)))
+        # print("abel all actions: %s" % (str(actions)))
         bestScore = float('-inf')
         bestActions: list[Action] = []
         for a in actions:
@@ -390,9 +391,9 @@ class Cain(Eve):
             new_state = state.generate_successor(a)
             # call first with depth 1, this function is essentialy depth 0
             Cainscore, _ = self.tree(new_state, 1)
-            print(
-                "Cain: evaluated action %s to have score %f" %
-                (str(a), Cainscore))
+            # print(
+            #     "Cain: evaluated action %s to have score %f" %
+            #     (str(a), Cainscore))
             if Cainscore == bestScore:
                 # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
                 # add to bestActions
@@ -430,96 +431,74 @@ class Cain(Eve):
     def tree(self, state: GameState, depth) -> tuple[float, float]:
         # print("Cain: tree called at depth %d with agent_index %d" % (depth, state.agent_index))
         # get legal actions for which agent it is currently the turn of
+        if state.agent_index < 0:
+            return self.evaluate(state)
+        actions = state.get_legal_actions()
+        if not actions:
+            return self.evaluate(state)
 
-        # avoid valueError(agent_index < 0)
-        # this happens when there's a game over, but i have no idea why game overs are happening
-        # just evaluate the state and return that
-        if (state.agent_index < 0):
-            # always keep this statement uncommented so we can try to track
-            # down the cause
-            print(
-                "WARNING: Cain: Agent index %d did %s in depth %d resulting in state.agent_index = -1" %
-                (state.last_agent_index, str(
-                    state.get_last_agent_action(
-                        state.last_agent_index)), (depth - 1)))
-            cainVal, abelVal = self.evaluate(state)
-            return cainVal, abelVal
-        else:
-            actions = state.get_legal_actions()
-        # score keeping variables. have to initalize all of them regardless for
-        # scope reasons, but only the relevant ones will be used
-        bestAbel = float('-inf')
-        # has to be a list because what if there are multiple states with same
-        # bestAbel?
-        bestCain: list[float] = []
-        # if this does happen average the Cain score (repersenting random
-        # chance of choosing those actions)
-        scoreTuples: list[tuple[float, float]] = []
-        for a in actions:
-            # print("Cain depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
-            new_state = state.generate_successor(a)
-            # score the state either through recursion or calling eval if we're
-            # at base case
-            if depth == MAX_DEPTH:
-                cainVal, abelVal = self.evaluate(new_state)
-            else:
-                cainVal, abelVal = self.tree(new_state, depth + 1)
+        if state.agent_index == self.own_index:  # i think determining the agent type upfront should speed things up'
+            bestCain = float('-inf')
+            bestAbels: list[float] = []
 
-            if state.agent_index == self.brother_index:
+            for a in actions:
+                # print("Cain depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
+                new_state = state.generate_successor(a)
+                # score the state either through recursion or calling eval if we're
+                # at base case
+                if depth >= MAX_DEPTH:
+                    cainVal, abelVal = self.evaluate(new_state)
+                else:
+                    cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                if cainVal > bestCain:
+                    bestCain = cainVal
+                    bestAbels = [abelVal]
+                elif cainVal == bestCain:
+                    bestAbels.append(abelVal)
+
+            return bestCain, (sum(bestAbels) / len(bestAbels))
+        elif state.agent_index == self.brother_index:
+            bestAbel = float('-inf')
+            bestCains: list[float] = []
+            for a in actions:
                 # if this is Abel decide who to send up based on abelVal
-                if abelVal == bestAbel:
-                    bestCain.append(cainVal)
-                elif abelVal > bestAbel:
+                new_state = state.generate_successor(a)
+                # score the state either through recursion or calling eval if we're
+                # at base case
+                if depth >= MAX_DEPTH:
+                    cainVal, abelVal = self.evaluate(new_state)
+                else:
+                    cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                if abelVal > bestAbel:
                     bestAbel = abelVal
-                    bestCain.clear()
-                    bestCain.append(cainVal)
-            # elif state.agent_index == self.own_index:
-            #     print(
-            #         "Cain: Fatal Error: tree() called with state where Cain was current agent")
-            #     return 0.0, 0.0
-            # pretty sure this is not a fundemental error and we just need to evaluate our turn how we have been not return 0
-            elif state.agent_index == self.own_index:
-                bestCain = float('-inf')
-                bestAbels = []
+                    bestCains = [cainVal]
+                elif abelVal == bestAbel:
+                    bestCains.append(cainVal)
 
-                for a in actions:
-                    new_state = state.generate_successor(a)
+            return (sum(bestCains) / len(bestCains)), bestAbel
 
-                    if depth == MAX_DEPTH:
-                        cainVal, abelVal = self.evaluate(new_state)
-                    else:
-                        cainVal, abelVal = self.tree(new_state, depth + 1)
-
-                    if cainVal > bestCain:
-                        bestCain = cainVal
-                        bestAbels = [abelVal]
-                    elif cainVal == bestCain:
-                        bestAbels.append(abelVal)
-
-                return bestCain, (sum(bestAbels) / len(bestAbels))
-            else:  # if it is the opponent, append scores to list for future expectimaxing
-                scoreTuples.append((cainVal, abelVal))
-
-        # afterwards average bestCain if needed, and send up bestAbel, but thats to simplify the code latter
-        # (since its simipler if opponent doesn't have to care if its before or after Abel)
-        if state.agent_index == self.brother_index:
-            bestCainAv = sum(bestCain) / len(bestCain)
-            return bestCainAv, bestAbel
+            # return (sum(bestCain) / len(bestCain)), bestAbel
         else:  # error check for somehow Cain being current agent already occured, unessecary here
             # currently all actions from opponents are assumed to have equal
             # likelyhoods, so expectimax is calcuated as simple average
-            options = len(scoreTuples)
+            # options = len(scoreTuples)
             cainTotal: float = 0.0
             abelTotal: float = 0.0
-            # because its tuples can't just use sum()
-            for i in scoreTuples:
-                cain, abel = i
-                cainTotal = cainTotal + cain
-                abelTotal = abelTotal + abel
-            # after summing time to divide
-            cainAv = cainTotal / options
-            abelAv = abelTotal / options
-            return cainAv, abelAv
+
+            for a in actions:
+                new_state = state.generate_successor(a)
+                if depth >= MAX_DEPTH:
+                    cainVal, abelVal = self.evaluate(new_state)
+                else:
+                    cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                cainTotal += cainVal
+                abelTotal += abelVal
+
+            n = len(actions)
+            return cainTotal / n, abelTotal / n
 
 
 # Abel is the defensive agent
@@ -541,15 +520,15 @@ class Abel(Eve):
         actions = state.get_legal_actions()
         bestScore = float('-inf')
         bestActions: list[Action] = []
-        print("abel all actions: %s" % (str(actions)))
+        # print("abel all actions: %s" % (str(actions)))
         for a in actions:
-           # print("Abel: evaluating action %s" % (str(a)))
+            # print("Abel: evaluating action %s" % (str(a)))
             new_state = state.generate_successor(a)
             # call first with depth 1, this function is essentialy depth 0
             _, abelScore = self.tree(new_state, 1)
-            print(
-                "Cain: evaluated action %s to have score %f" %
-                (str(a), abelScore))
+            # print(
+            #     "Cain: evaluated action %s to have score %f" %
+            #     (str(a), abelScore))
             if abelScore == bestScore:
                 # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
                 # add to bestActions
@@ -569,16 +548,18 @@ class Abel(Eve):
             print("Abel: Fatal Error: No action was found")
             return Action("STOP")
         else:
-            print("Abel: best actions %s" % str(bestActions))
+            # print("Abel: best actions %s" % str(bestActions))
             action = self.rng.choice(bestActions)
-            print("Abel: Chosen action %s" % str(action))
+            # print("Abel: Chosen action %s" % str(action))
             return action
 
     # order for eval and tree return is cainVal, abelVal
     # get_action is top node of the tree
     # see the almost identical version of this code in Cain for more detailed
     # comments
-    def tree(self, state: GameState, depth) -> tuple[float, float]: # tree needs to be rewritten for both agents so that we can stop wasting recursions and loops on the self evaluation case
+    # tree needs to be rewritten for both agents so that we can stop wasting
+    # recursions and loops on the self evaluation case
+    def tree(self, state: GameState, depth) -> tuple[float, float]:
         # print("Abel: tree called at depth %d with agent_index %d" % (depth, state.agent_index))
         # get legal actions for which agent it is currently the turn of
         # avoid valueError(agent_index < 0)
@@ -587,88 +568,93 @@ class Abel(Eve):
         if (state.agent_index < 0):
             # always keep this statement uncommented so we can try to track
             # down the cause
-            print(
-                "WARNING: Abel: Agent index %d did %s in depth %d resulting in state.agent_index = -1" %
-                (state.last_agent_index, str(
-                    state.get_last_agent_action(
-                        state.last_agent_index)), (depth - 1)))
+            # print(
+            #     "WARNING: Abel: Agent index %d did %s in depth %d resulting in state.agent_index = -1" %
+            #     (state.last_agent_index, str(
+            #         state.get_last_agent_action(
+            #             state.last_agent_index)), (depth - 1)))
             # just eval and return that value for this node
             cainVal, abelVal = self.evaluate(state)
             return cainVal, abelVal
-        else:
-            actions = state.get_legal_actions()
+        # else:
+        #     actions = state.get_legal_actions()
+        actions = state.get_legal_actions()
+        if not actions:
+            return self.evaluate(state)
         # score keeping variables. have to initalize all of them regardless for
         # scope reasons, but only the relevant ones will be used
-        bestCain = float('-inf')
-        # has to be a list because what if there are multiple states with same
-        # bestCain?
-        bestAbel: list[float] = []
+        # bestCain = float('-inf')
+        # # has to be a list because what if there are multiple states with same
+        # # bestCain?
+        # bestAbel: list[float] = []
         # if this does happen pass up average the Abel score (repersenting
         # random chance of choosing those actions)
-        scoreTuples: list[tuple[float, float]] = []
-        for a in actions:
-            # print("Abel depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
-            new_state = state.generate_successor(a)
-            # score the state either through recursion or calling eval if we're
-            # at base case
-            if depth == MAX_DEPTH:
-                cainVal, abelVal = self.evaluate(new_state)
-            else:
-                cainVal, abelVal = self.tree(new_state, depth + 1)
+        # scoreTuples: list[tuple[float, float]] = []
+        # reimplementing tree to be a bit more effecient, sorting by agent
+        # first
+        if state.agent_index == self.own_index:
+            bestAbel = float('-inf')
+            bestCains: list[float] = []
 
-            if state.agent_index == self.brother_index:
-                # if this is Abel decide who to send up based on abelVal
+            for a in actions:
+                # print("Abel depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
+                new_state = state.generate_successor(a)
+                # score the state either through recursion or calling eval if we're
+                # at base case
+                if depth >= MAX_DEPTH:
+                    cainVal, abelVal = self.evaluate(new_state)
+                else:
+                    cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                if abelVal == bestAbel:
+                    bestCains.append(cainVal)
+                elif abelVal > bestAbel:
+                    bestAbel = abelVal
+                    bestCains = [cainVal]
+
+            return (sum(bestCains) / len(bestCains)), bestAbel
+
+        elif state.agent_index == self.brother_index:
+            bestCain = float('-inf')
+            bestAbels: list[float] = []
+            # if this is Abel decide who to send up based on abelVal
+
+            for a in actions:
+                # print("Abel depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
+                new_state = state.generate_successor(a)
+
+                if depth >= MAX_DEPTH:
+                    cainVal, abelVal = self.evaluate(new_state)
+                else:
+                    cainVal, abelVal = self.tree(new_state, depth + 1)
+
                 if cainVal == bestCain:
-                    bestAbel.append(abelVal)
+                    bestAbels.append(abelVal)
                 elif cainVal > bestCain:
                     bestCain = cainVal
-                    bestAbel.clear()
-                    bestAbel.append(abelVal)
-            # elif state.agent_index == self.own_index:
-            #     print(
-            #         "Abel: Fatal Error: tree() called with state where Abel was current agent")
-            #     return 0.0, 0.0
-            # same as cain, I dont think this an issue
-            elif state.agent_index == self.own_index:
-                bestAbel = float('-inf')
-                bestCains = []
+                    bestAbels.clear()
+                    bestAbels.append(abelVal)
 
-                for a in actions:
-                    new_state = state.generate_successor(a)
+            return bestCain, (sum(bestAbels) / len(bestAbels))
 
-                    if depth == MAX_DEPTH:
-                        cainVal, abelVal = self.evaluate(new_state)
-                    else:
-                        cainVal, abelVal = self.tree(new_state, depth + 1)
-
-                    if abelVal > bestAbel:
-                        bestAbel = abelVal
-                        bestCains = [cainVal]
-                    elif abelVal == bestAbel:
-                        bestCains.append(cainVal)
-
-                return (sum(bestCains) / len(bestCains)), bestAbel
-            else:  # if it is the opponent, append scores to list for future expectimaxing
-                scoreTuples.append((cainVal, abelVal))
-
-        # afterwards average bestCain if needed, and send up bestAbel, but thats to simplify the code latter
-        # (since its simipler if opponent doesn't have to care if its before or after Abel)
-        if state.agent_index == self.brother_index:
-            bestAbelAv = sum(bestAbel) / len(bestAbel)
-            # return bestAbelAv, bestCain # pretty sure this is the wrong way around
-            return bestCain, bestAbelAv
-        else:  # error check for somehow Cain being current agent already occured, unessecary here
+        else:
+            # error check for somehow Cain being current agent already occured, unessecary here
             # currently all actions from opponents are assumed to have equal
             # likelyhoods, so expectimax is calcuated as simple average
-            options = len(scoreTuples)
-            cainTotal: float = 0.0
-            abelTotal: float = 0.0
-            # because its tuples can't just use sum()
-            for i in scoreTuples:
-                cain, abel = i
-                cainTotal = cainTotal + cain
-                abelTotal = abelTotal + abel
+            cainTotal = 0.0
+            abelTotal = 0.0
+
+            for a in actions:
+                new_state = state.generate_successor(a)
+
+                if depth >= MAX_DEPTH:
+                    cainVal, abelVal = self.evaluate(new_state)
+                else:
+                    cainVal, abelVal = self.tree(new_state, depth + 1)
+
+                cainTotal += cainVal
+                abelTotal += abelVal
+
+            n = len(actions)
             # after summing time to divide
-            cainAv = cainTotal / options
-            abelAv = abelTotal / options
-            return cainAv, abelAv
+            return cainTotal / n, abelTotal / n
