@@ -11,7 +11,11 @@ import pacai.core.agent
 import typing
 import pacai.core.gamestate
 import pacai.search.distance
-MAX_DEPTH = 1
+from pacai.core.board import Position
+# ok the way WeightDict and FeatureDict work is that they're just type aliases. But I have to use this to be able to reuse the code
+# about packing/unpacking training from pa3
+import pacai.core.features as Feature
+MAX_DEPTH = 3
 
 # constants for the copied dummy feature extractor
 CLOSE_GHOST_DISTANCE: float = 1.0
@@ -38,11 +42,191 @@ class Eve(pacai.core.agent.Agent):
                  **kwargs: typing.Any) -> None:
 
         super().__init__(**kwargs)
-        # Since there seems to be some confusion, the higher the evaluate score the better
-        # remember, even if something is bad overall, if the agent can't make a decision to effect it doesn't matter to their evaluation
-        # the double evaluation is just to allow it to make a more accurate
-        # prediction of the future
-        self.cainWeights = {
+        # weights are now held by the specific agent
+        self.brother_index = None
+        self.own_index = None
+        # a bigger score is better. bad things have negative weights.
+        # if something is universally bad but an agents actions can't effect it (like a dead ally), it isn't included
+        self.weights: Feature.WeightDict = {}  # empty dict to be overriden
+
+    # evaluate states state based on the specific weights for the relevant agent, which also has a corresponding features extractor function
+    # now only returns a single float, which is that agent's perspective
+    def evaluate(self, state: GameState) -> float:
+        features: Feature.FeatureDict = self.feature_extractor(state)
+        # print("features: ")
+        # print(features)
+        # print("CainWeights: ")
+        # print(self.cainWeights)
+        # print("AbelWeights: ")
+        # print(self.abelWeights)
+        Total: float = 0.0
+        for f, val in features.items():
+            # print("evaluting weights for %s" % (f))
+            Total = Total + (val * self.weights[f])
+            # cain and able have different keys in their dict, but they should be the same as the features their feature_extractor returns
+        return Total
+
+    # extracts the relevant features from state
+    # each agent has their own defintion of agent, this feature is supposed to be overriden
+    def feature_extractor(self, state: GameState) -> Feature.FeatureDict:
+        print("Error: somehow the generic feature_extractor has been called")
+        return {}
+        
+    # to be called by a get_action when own indexes are unknown
+    def set_indexes(self, state: GameState):
+        # state get agent_index is that of the calling agent
+        self.own_index = state.agent_index
+        # crunched the numbers if I'm right the team pairs are [0, 2] and [1,
+        # 3]
+        if self.own_index == 0:
+            self.brother_index = 2
+        elif self.own_index == 2:
+            self.brother_index = 0
+        elif self.own_index == 1:
+            self.brother_index = 3
+        elif self.own_index == 3:
+            self.brother_index = 1
+        else:
+            print(
+                "Fatal error: set_indexes called when state.agent_index was %d" %
+                (state.agent_index))
+            
+    # in this build get_action is the same for both of the brothers, with their eval and feature extractors being different
+    # returns best action, picking randomly if multiple. Decides which action is the best based on its personal
+    # evaluate function
+    # this one just happens to be copied from Cain so thats why it has the debug prints it does
+    def get_action(self, state: GameState) -> Action:
+        # only on first call a game, set up own and brother indexes
+        if (self.own_index is None):
+            self.set_indexes(state)
+        # print("%s: own_index = %d brother_index = %d" % (str(isinstance(self, Cain)), self.own_index, self.brother_index))
+
+        # get action will act as the top layer for the tree, since return types
+        # differ
+        # below is trying to stop STOP from running all the time
+        actions = state.get_legal_actions()
+        # actions = [a for a in state.get_legal_actions() if str(a) != 'STOP']
+        # if not actions:
+        #     actions = state.get_legal_actions()
+        # print("abel all actions: %s" % (str(actions)))
+        bestScore = float('-inf')
+        bestActions: list[Action] = []
+        for a in actions:
+            new_state = state.generate_successor(a)
+            # call first with depth 1, this function is essentialy depth 0
+            score = self.tree(new_state, 1)
+            # print(
+            #     "Cain: evaluated action %s to have score %f" %
+            #     (str(a), Cainscore))
+            if score == bestScore:
+                # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
+                # add to bestActions
+                bestActions.append(a)
+                # print("bestActions: %s" % (str(bestActions)))
+            elif score > bestScore:
+                # reset bestActions and update bestScore
+                bestScore = score
+                bestActions.clear()
+                bestActions.append(a)
+                # print("this is better than bestScore. New best value is %f" % (bestScore))
+                # print("bestActions is now: %s" % (str(bestActions)))
+
+        # now that all actions have been evaluated, return one (use rng if need
+        # to decide between them)
+        if len(bestActions) == 0:
+            print("Agent %d: Fatal Error: No action was found" % (self.own_index))
+            return Action("STOP")
+        else:
+            # print("Cain: best actions %s" % str(bestActions))
+            action = self.rng.choice(bestActions)
+            # print("Cain: Chosen action %s" % str(action))
+            return action
+    
+    # is called by get_action. Tree is passed a state after the action it is being considered
+    # for time savings, the tree is calucated as if the brother just does STOP. Each brother has his own evaluate and feature extractor.
+    # because of this, it is essentially just an expectimax tree because its just thinking about the next turns the opponents are going to take
+    # this just happened to be copied from Cain, hence the debug print comments
+    def tree(self, state: GameState, depth) -> float:
+        # print("Tree called at depth %d with agent_index %d" % (depth, state.agent_index))
+        # get legal actions for which agent it is currently the turn of
+        if state.agent_index < 0:
+            return self.evaluate(state)
+        actions = state.get_legal_actions()
+        if not actions:
+            return self.evaluate(state)
+
+        if state.agent_index == self.own_index:  # i think determining the agent type upfront should speed things up'
+            bestVal = float('-inf')
+            # print("Agent %d: Non-fatal error: An agent is somehow having a turn in its own tree. That's not supposed to happen" % (self.own_index))
+            # it seems like sometimes this will happen??? so just leave it as is
+            # print(str(state.get_agent_indexes()))
+            for a in actions:
+                # print("Cain depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
+                new_state = state.generate_successor(a)
+                # score the state either through recursion or calling eval if we're
+                # at base case
+                if depth >= MAX_DEPTH:
+                    Val = self.evaluate(new_state)
+                else:
+                    Val = self.tree(new_state, depth + 1)
+
+                if Val > bestVal:
+                    bestVal = Val
+            return bestVal
+        elif state.agent_index == self.brother_index:
+            # brother only generates one state
+            new_state = state.generate_successor(Action("STOP"))
+            # print("succesfully applied stop. new agent index = %d" % (new_state.agent_index))
+            if depth >= MAX_DEPTH:
+                Val = self.evaluate(new_state)
+            else:
+                Val = self.tree(new_state, depth + 1)
+            return Val
+        else:  # error check for somehow calling agent being current agent already occured, unessecary here
+            # currently all actions from opponents are assumed to have equal
+            # likelyhoods, so expectimax is calcuated as simple average
+            # options = len(scoreTuples)
+            Total: float = 0.0
+            for a in actions:
+                new_state = state.generate_successor(a)
+                if depth >= MAX_DEPTH:
+                    Val = self.evaluate(new_state)
+                else:
+                    Val = self.tree(new_state, depth + 1)
+                Total += Val
+            n = len(actions)
+            # hey if agent is crashing it might be because divide by zero is happening here. very unlikely though, so I didn't
+            # write an error catch so pipelining can be more effective, since speed is extremely important rn
+            return Total / n
+
+# i'm pretty sure comput gets the actual distances by traversing the board, so there's nowhere to impliment bfs
+def _get_distances(
+        state: pacai.core.gamestate.GameState,
+        agent: pacai.core.agent.Agent | None = None) -> pacai.search.distance.DistancePreComputer:
+    distances = None
+
+    # If there is an agent, get precomputed distances from it.
+    if (agent is not None):
+        distances = agent.extra_storage.get('distances', None)
+
+    # Compute distances if we have none.
+    if (distances is None):
+        distances = pacai.search.distance.DistancePreComputer()
+        distances.compute(state.board)
+
+    # Save the distances in the agent (if possible).
+    if (agent is not None):
+        agent.extra_storage['distances'] = distances
+
+    return distances
+
+
+# Cain is the offensive agent
+class Cain(Eve):
+    def __init__(self, **kwargs: typing.Any) -> None:
+        super().__init__(**kwargs)
+        # override weights
+        self.weights: Feature.WeightDict = {
             # offense
             "cain-dist-to-enemy-food": -4.0,      # closer to food is better
             "enemy-food-left": -1.0,         # fewer left is better
@@ -54,110 +238,44 @@ class Eve(pacai.core.agent.Agent):
             "cain-close-nonscared-defenders-count": -3.0,   # being near defenders is bad
             "cain-close-scared-defenders-count": 3.0,  # unless they're scared
             "scared-defenders-extant": 1.2,  # all extant scared defenders
-            # defense irrelevant for Cain
-            "num-invaders": 0.0,
-            "dist-to-nearest-invader": 0.0,
-            "abel-dist-to-nearest-nonscared-invader": 0.0,
-            "abel-dist-to-nearest-scared-invader": 0.0,
-            "abel-close-nonscared-invaders-count": 0.0,
-            "abel-close-scared-invaders-count": 0.0,
+            # irrelevant features removed
 
             "normalized-score": 15.0,  # the actual score is extremely important
-            "cain-correct-zone": 10.0,  # important to be in the correct zone
+            "cain-correct-zone": 50.0,  # important to be in the correct zone
             # but it doesn't matter to cain if abel is in the correct zone or
             # not
-            "abel-correct-zone": 0.0,
-            "abel-afraid": 0.0,  # same if he's afraid
-            # cain shouldn't care all that much if he should be afraid because
-            # that doesn't effect pacmen
+            
             "cain-afraid": -0.3,
-            "abel-dead": 0.0,
             # being dead is bad. but because of quick respawn isn't as
             # important as the score
             "cain-dead": -10.0,
+            "center-distance": -30.0, # to get to switch zones
         }
+        # index member variables held by eve
 
-        self.abelWeights = {
-            # defense
-            "num-invaders": -1.0,             # invaders bad
-            "abel-dist-to-nearest-nonscared-invader": -6.0,  # closer to invader is better
-            "abel-dist-to-nearest-scared-invader": 6.0,  # unless abel is scared
-            "abel-close-nonscared-invaders-count": 3.0,  # same idea with these values
-            "abel-close-scared-invaders-count": -3.0,
-            # offense irrelevant for Abel
-            "cain-dist-to-nearest-nonscared-defender": 0.0,
-            "cain-dist-to-nearest-scared-defender": 0.0,
-            "cain-dist-to-enemy-food": 0.0,
-            "enemy-food-left": 0.0,
-            "cain-close-nonscared-defenders-count": 0.0,
-            "cain-close-scared-defenders-count": 0.0,
-            "scared-defenders-extant": 0.0,
-            "cain-close-food-count": 0.0,
-
-            "normalized-score": 15.0,  # score extremely important
-            "cain-correct-zone": 0.0,  # 1/0 if cain is in the enemy area
-            "abel-correct-zone": 10.0,  # 1/0 if abel is in the enemy area
-            "abel-afraid": -3.0,  # as a defender, abel cares much more about being afraid
-            "cain-afraid": 0.0,  # 1/0 if cain is afraid
-            "abel-dead": -10.0,  # 1/0 if abel is dead
-            "cain-dead": 0.0,  # 1/0 if cain is dead
-
-        }
-        self.brother_index = None
-        self.own_index = None
-
-    # evaluates state for both cain and abel and returns both
-    # currently a dummy version for testing
-    # get a dot product of the features and the weights
-    def evaluate(self, state: GameState):
-        features = self.feature_extractor(state)
-        # print("features: ")
-        # print(features)
-        # print("CainWeights: ")
-        # print(self.cainWeights)
-        # print("AbelWeights: ")
-        # print(self.abelWeights)
-        cainVal: float = 0.0
-        abelVal: float = 0.0
-        for f, val in features.items():
-            # print("evaluting weights for %s" % (f))
-            cainVal = cainVal + (val * self.cainWeights[f])
-            abelVal = abelVal + (val * self.abelWeights[f])
-        return cainVal, abelVal
-
-    # extracts the relevant features from state
     # self is the agent who is at the top of the stack calling this to decide what action to take next. Could be cain or abel
-    # the agent from state is who is at the bottom of the tree, and is
-    # irrelevant
-    def feature_extractor(self, state: GameState) -> dict[str, float]:
+    # the agent from state is who is at the bottom of the tree, and is irrelevant
+    def feature_extractor(self, state: GameState) -> Feature.FeatureDict:
         # default version of the dictionary with placeholder values so what is
         # used is easily referenced
-        features: dict[str, float] = {
-            "num-invaders": 0.0,
-            # slight misnomer, "scared" here refers to abel, not the invader
-            "abel-dist-to-nearest-nonscared-invader": 0.0,
-            # we're not just * -1 them in case it turns out they would be best
-            # with different weights
-            "abel-dist-to-nearest-scared-invader": 0.0,
+        features: Feature.FeatureDict = {
             "cain-dist-to-nearest-nonscared-defender": 0.0,
             "cain-dist-to-nearest-scared-defender": 0.0,
             "cain-dist-to-enemy-food": 0.0,
             "enemy-food-left": 0.0,
             "cain-close-nonscared-defenders-count": 0.0,
             "cain-close-scared-defenders-count": 0.0,
-            "abel-close-nonscared-invaders-count": 0.0,
-            "abel-close-scared-invaders-count": 0.0,
             "cain-close-food-count": 0.0,
             "normalized-score": 0.0,
             "cain-correct-zone": 0.0,  # 1/0 if cain is in the enemy area
-            "abel-correct-zone": 0.0,  # 1/0 if abel is in the enemy area
-            "abel-afraid": 0.0,  # 1/0 if abel is afraid
             "cain-afraid": 0.0,  # 1/0 if cain is afraid
-            "abel-dead": 0.0,  # 1/0 if abel is dead
-            "cain-dead": 0.0,  # 1/0 if cain is dead
-            "scared-defenders-extant": 0.0,  # all extant scared defenders
             # these binary values are expected to have relatively high positive
             # or negative weights
+            "center-distance": 0.0, # won't be calcuated unless they're in the wrong zone, otherwise its a value with negative weight to encourage
+            # crossing over to the other side
+            # extant scared defenders is removed because its either about how many of the opponents are currently defenders (can't control)
+            # or it actually decreases as opponents are eaten. or its about time. Since optimization is so important, i've removed what
+            # was always going to be a pretty inconsquential feature
         }
 
         # this stores precomputed distances in the memory of the agent
@@ -167,16 +285,7 @@ class Eve(pacai.core.agent.Agent):
         # the pos from both cainIndex and abelIndex
         max_distance = float(state.board.width * state.board.height)
 
-        # figure out the indexes of Cain and Abel, regardless of who calls
-        cainIndex: int | None = None
-        abelIndex: int | None = None
-        if (isinstance(self, Cain)):
-            cainIndex = self.own_index
-            abelIndex = self.brother_index
-        else:
-            cainIndex = self.brother_index
-            abelIndex = self.own_index
-
+        # own index is simply usued throughout this. Can't get pylance to stop complaining
         # get score that is always positive in our own direction
         score = state.get_normalized_score(self.own_index)
         # self.own_index has to be typed to int | None, so pylance is always going to be angry. but there should never be a situation
@@ -189,7 +298,7 @@ class Eve(pacai.core.agent.Agent):
             self.own_index)
         scared_philistine_positions = state.get_scared_opponent_positions(
             self.own_index)
-        invader_positions = state.get_invader_positions(self.own_index)
+        # invader_positions = state.get_invader_positions(self.own_index) # Cain doesn't care about invaders
         # all these get_[]_positions return list of (index, pos)
         # invaders don't get scared, you do
 
@@ -197,66 +306,38 @@ class Eve(pacai.core.agent.Agent):
         for idx, pos in philistine_positions.items():
             if pos is None:
                 continue
-            if idx not in invader_positions and state.is_ghost(idx):
+            if state.is_ghost(idx):
+                # without invader_positions, check to see who is on their own
+                # side of the board by seeing if they're ghosts
                 nonscared_defenders.append((idx, pos))
 
         scared_defenders = []
         for idx, pos in scared_philistine_positions.items():
             if pos is None:
                 continue
-            if idx not in invader_positions and state.is_ghost(idx):
+            if state.is_ghost(idx):
                 scared_defenders.append((idx, pos))
 
-        # before calcuating defense features, see if Abel is even alive
-        abelpos = state.get_agent_position(abelIndex)
-        if abelpos is None:
-            features["abel-dead"] = 1.0
-            # if this is the case, the abel related features don't have values assigned to them
-            # their default values of 0.0 are fine
-        else:
-            if state.is_scared(abelIndex):
-                features["abel-afraid"] = 1.0
-                # leaving the binary features to their default value for the
-                # "no" answer is fine, as they're already 0.0
-            if state.is_ghost(abelIndex):
-                features["abel-correct-zone"] = 1.0
-            # --- Defense features ---
-            features["num-invaders"] = float(len(invader_positions))
-            if invader_positions:
-                d = min(distances.get_distance_default(abelpos, pos, max_distance)
-                        for pos in invader_positions.values() if pos is not None)
-                # assign to the apporpirate feature. irrelevant features are
-                # already assigned to 0.0
-                if state.is_scared(abelIndex):
-                    features["abel-dist-to-nearest-scared-invader"] = d / \
-                        max_distance
-                else:
-                    features["abel-dist-to-nearest-nonscared-invader"] = d / \
-                        max_distance
-
-                # close invaders, either good or bad depending on if abel is
-                # currently scared, so they exist differently
-                close_invaders = 0
-                for _, pos in invader_positions.items():
-                    if distances.get_distance_default(
-                            abelpos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
-                        close_invaders += 1
-                if (state.is_scared(abelIndex)):
-                    features["abel-close-scared-invaders-count"] = float(
-                        close_invaders)
-                else:
-                    features["abel-close-nonscared-invaders-count"] = float(
-                        close_invaders)
-
+        # as cain, no need to extract defense features
+        
         # first see if Cain is even alive before computing his relevant stats
-        cainpos = state.get_agent_position(cainIndex)
+        cainpos = state.get_agent_position(self.own_index)
         if cainpos is None:
             features["cain-dead"] = 1.0
         else:
-            if state.is_scared(cainIndex):
+            if state.is_scared(self.own_index):
                 features["cain-afraid"] = 1.0
-            if not state.is_ghost(cainIndex):
-                features["cain-correct-zone"] = 1.0
+            if not state.is_ghost(self.own_index):
+                features["cain-correct-zone"] = 1.0 
+            else:
+                # problem, we have no way to encourage them to leave their zone if it takes too many steps
+                # until now
+                # also going to have to get maze-distance working and hope that doesn't cause timeout
+                middle: int = int(state.board.width / 2)
+                # columns are indexed to 1
+                # encourage moving towards the middle when you're in the wrong side, don't care about height
+                features["center-distance"] = abs(middle - cainpos.col)
+
             # --- Offense danger features (enemy defenders) ---
             if nonscared_defenders:
                 d = min(
@@ -264,20 +345,15 @@ class Eve(pacai.core.agent.Agent):
                         cainpos, pos, max_distance) for (
                         _, pos) in nonscared_defenders if pos is not None)
                 features["cain-dist-to-nearest-nonscared-defender"] = d / max_distance
-            # the reason for this logic being different is on defender there's only one abel to be scared, but if a ghost dies before the
-            # scared timer runs out it will respawn not scared
-            features["scared-defenders-extant"] = float(
-                len(scared_defenders) > 0)
             if scared_defenders:
                 d = min(
                     distances.get_distance_default(
                         cainpos, pos, max_distance) for (
                         _, pos) in scared_defenders if pos is not None)
-                features["cain-dist-to-nearest-scared-defender"] = d / \
-                    max_distance
+                features["cain-dist-to-nearest-scared-defender"] = d / max_distance
             # this is also only relevant to cain
             # --- Food features ---
-            food = state.get_food(cainIndex)
+            food = state.get_food(self.own_index)
             if food:
                 d = min(
                     distances.get_distance_default(cainpos, fpos, max_distance)
@@ -306,7 +382,7 @@ class Eve(pacai.core.agent.Agent):
                 close_scared_defenders)
 
             # close food (opportunity for Cain)
-            food_positions = state.get_food(cainIndex)
+            food_positions = state.get_food(self.own_index)
             close_food = 0
             for fpos in food_positions:
                 if distances.get_distance_default(
@@ -314,347 +390,128 @@ class Eve(pacai.core.agent.Agent):
                     close_food += 1
             features["cain-close-food-count"] = float(close_food)
 
-        # thing from the dummy extractor I don't think we want to use, but I'm keeping it here just in case it turns out we do
+        # thing from the dummy extractor I don't understand, but we need all the optimization we can get
         # ""Lower all features for better optimization.""
-        # for (key, value) in list(features.items()):
-            # features[key] = value / 10.0
+        for (key, value) in list(features.items()):
+            features[key] = value / 10.0
 
         return features
-        # to be called by a get_action when own indexes are unknown
-
-    def set_indexes(self, state: GameState):
-        # state get agent_index is that of the calling agent
-        self.own_index = state.agent_index
-        # crunched the numbers if I'm right the team pairs are [0, 2] and [1,
-        # 3]
-        if self.own_index == 0:
-            self.brother_index = 2
-        elif self.own_index == 2:
-            self.brother_index = 0
-        elif self.own_index == 1:
-            self.brother_index = 3
-        elif self.own_index == 3:
-            self.brother_index = 1  # should this be self.brother_index?
-        else:
-            print(
-                "Fatal error: set_indexes called when state.agent_index was %d" %
-                (state.agent_index))
-
-
-def _get_distances(
-        state: pacai.core.gamestate.GameState,
-        agent: pacai.core.agent.Agent | None = None) -> pacai.search.distance.DistancePreComputer:
-    distances = None
-
-    # If there is an agent, get precomputed distances from it.
-    if (agent is not None):
-        distances = agent.extra_storage.get('distances', None)
-
-    # Compute distances if we have none.
-    if (distances is None):
-        distances = pacai.search.distance.DistancePreComputer()
-        distances.compute(state.board)
-
-    # Save the distances in the agent (if possible).
-    if (agent is not None):
-        agent.extra_storage['distances'] = distances
-
-    return distances
-
-
-# Cain is the offensive agent
-class Cain(Eve):
-    def __init__(self, **kwargs: typing.Any) -> None:
-        super().__init__(**kwargs)
-        # all member variables are inherited from Eve
-
-    # returns best action, picking randomly if multiple. Decides which action
-    # is best based on CainVal
-    def get_action(self, state: GameState) -> Action:
-        # only on first call a game, set up own and brother indexes
-        if (self.own_index is None):
-            self.set_indexes(state)
-        # print("Cain: own_index = %d brother_index = %d" % (self.own_index, self.brother_index))
-
-        # get action will act as the top layer for the tree, since return types
-        # differ
-        # below is trying to stop STOP from running all the time
-        actions = state.get_legal_actions()
-        # actions = [a for a in state.get_legal_actions() if str(a) != 'STOP']
-        # if not actions:
-        #     actions = state.get_legal_actions()
-        # print("abel all actions: %s" % (str(actions)))
-        bestScore = float('-inf')
-        bestActions: list[Action] = []
-        for a in actions:
-
-            new_state = state.generate_successor(a)
-            # call first with depth 1, this function is essentialy depth 0
-            Cainscore, _ = self.tree(new_state, 1)
-            # print(
-            #     "Cain: evaluated action %s to have score %f" %
-            #     (str(a), Cainscore))
-            if Cainscore == bestScore:
-                # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
-                # add to bestActions
-                bestActions.append(a)
-                # print("bestActions: %s" % (str(bestActions)))
-            elif Cainscore > bestScore:
-                # reset bestActions and update bestScore
-                bestScore = Cainscore
-                bestActions.clear()
-                bestActions.append(a)
-                # print("this is better than bestScore. New best value is %f" % (bestScore))
-                # print("bestActions is now: %s" % (str(bestActions)))
-
-        # now that all actions have been evaluated, return one (use rng if need
-        # to decide between them)
-        if len(bestActions) == 0:
-            print("Cain: Fatal Error: No action was found")
-            return Action("STOP")
-        else:
-            # print("Cain: best actions %s" % str(bestActions))
-            action = self.rng.choice(bestActions)
-            # print("Cain: Chosen action %s" % str(action))
-            return action
-
-    # eval order is cainVal, abelVal
-    # will be called by get_action, giving it states after an action Cain is considering
-    # so it works recursively, will be returning both a cainScore and abelScore every depth
-    # when someone dies they immediately respawn, essentially being teleported.
-    # so this is written that there are three turns between each agent making its own choice
-    # opponents use expectimax, brother is assumed to do what gives them the best result
-    # (but even that is an approximation because when brother actually goes he will look more turns in the future)
-    # code is also currently written to only be able to one round into the future. MAX_DEPTH is still a constant because its good practice
-    # but just adjusting that would only work if the total number of agents
-    # changed
-    def tree(self, state: GameState, depth) -> tuple[float, float]:
-        # print("Cain: tree called at depth %d with agent_index %d" % (depth, state.agent_index))
-        # get legal actions for which agent it is currently the turn of
-        if state.agent_index < 0:
-            return self.evaluate(state)
-        actions = state.get_legal_actions()
-        if not actions:
-            return self.evaluate(state)
-
-        if state.agent_index == self.own_index:  # i think determining the agent type upfront should speed things up'
-            bestCain = float('-inf')
-            bestAbels: list[float] = []
-
-            for a in actions:
-                # print("Cain depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
-                new_state = state.generate_successor(a)
-                # score the state either through recursion or calling eval if we're
-                # at base case
-                if depth >= MAX_DEPTH:
-                    cainVal, abelVal = self.evaluate(new_state)
-                else:
-                    cainVal, abelVal = self.tree(new_state, depth + 1)
-
-                if cainVal > bestCain:
-                    bestCain = cainVal
-                    bestAbels = [abelVal]
-                elif cainVal == bestCain:
-                    bestAbels.append(abelVal)
-
-            return bestCain, (sum(bestAbels) / len(bestAbels))
-        elif state.agent_index == self.brother_index:
-            bestAbel = float('-inf')
-            bestCains: list[float] = []
-            for a in actions:
-                # if this is Abel decide who to send up based on abelVal
-                new_state = state.generate_successor(a)
-                # score the state either through recursion or calling eval if we're
-                # at base case
-                if depth >= MAX_DEPTH:
-                    cainVal, abelVal = self.evaluate(new_state)
-                else:
-                    cainVal, abelVal = self.tree(new_state, depth + 1)
-
-                if abelVal > bestAbel:
-                    bestAbel = abelVal
-                    bestCains = [cainVal]
-                elif abelVal == bestAbel:
-                    bestCains.append(cainVal)
-
-            return (sum(bestCains) / len(bestCains)), bestAbel
-
-            # return (sum(bestCain) / len(bestCain)), bestAbel
-        else:  # error check for somehow Cain being current agent already occured, unessecary here
-            # currently all actions from opponents are assumed to have equal
-            # likelyhoods, so expectimax is calcuated as simple average
-            # options = len(scoreTuples)
-            cainTotal: float = 0.0
-            abelTotal: float = 0.0
-
-            for a in actions:
-                new_state = state.generate_successor(a)
-                if depth >= MAX_DEPTH:
-                    cainVal, abelVal = self.evaluate(new_state)
-                else:
-                    cainVal, abelVal = self.tree(new_state, depth + 1)
-
-                cainTotal += cainVal
-                abelTotal += abelVal
-
-            n = len(actions)
-            return cainTotal / n, abelTotal / n
-
 
 # Abel is the defensive agent
 class Abel(Eve):
     def __init__(self, **kwargs: typing.Any) -> None:
         super().__init__(**kwargs)
-        # all member variables come from eve
+        # now weights are only held by the relevant agent
+        self.weights: Feature.FeatureDict = {
+            # defense
+            "num-invaders": -1.0,             # invaders bad
+            "abel-dist-to-nearest-nonscared-invader": -6.0,  # closer to invader is better
+            "abel-dist-to-nearest-scared-invader": 6.0,  # unless abel is scared
+            "abel-close-nonscared-invaders-count": 3.0,  # same idea with these values
+            "abel-close-scared-invaders-count": -3.0,
+            # removed weights irrelevant to Abel
 
-    # returns best action, picking randomly if multiple. Decides which action
-    # is best based on abelScore
-    def get_action(self, state: GameState) -> Action:
-        # only on first call a game, set up own and brother indexes
-        if (self.own_index is None):
-            self.set_indexes(state)
-        # print("Abel: own_index = %d brother_index = %d" % (self.own_index, self.brother_index))
+            "normalized-score": 15.0,  # score extremely important
+            "abel-correct-zone": 10.0,  # 1/0 if abel is in the enemy area
+            "abel-afraid": -3.0,  # as a defender, abel cares much more about being afraid
+            "abel-dead": -10.0,  # 1/0 if abel is dead
+            "center-distance": -5.0,
+        }
+        
+        # own/brother index memeber variables held by Eve
 
-        # get action will act as the top layer for the tree, since return types
-        # differ
-        actions = state.get_legal_actions()
-        bestScore = float('-inf')
-        bestActions: list[Action] = []
-        # print("abel all actions: %s" % (str(actions)))
-        for a in actions:
-            # print("Abel: evaluating action %s" % (str(a)))
-            new_state = state.generate_successor(a)
-            # call first with depth 1, this function is essentialy depth 0
-            _, abelScore = self.tree(new_state, 1)
-            # print(
-            #     "Cain: evaluated action %s to have score %f" %
-            #     (str(a), abelScore))
-            if abelScore == bestScore:
-                # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
-                # add to bestActions
-                bestActions.append(a)
-                # print("bestActions: %s" % (str(bestActions)))
-            elif abelScore > bestScore:
-                # reset bestActions and update bestScore
-                bestScore = abelScore
-                bestActions.clear()
-                bestActions.append(a)
-                # print("this is better than bestScore. New best value is %f" % (bestScore))
-                # print("bestActions is now: %s" % (str(bestActions)))
+    # self is the agent who is at the top of the stack calling this to decide what action to take next.
+    # the agent from state is who is at the bottom of the tree, and is irrelevant
+    def feature_extractor(self, state: GameState) -> Feature.FeatureDict:
+        # default version of the dictionary with placeholder values so what is
+        # used is easily referenced
+        features: Feature.FeatureDict = {
+            "num-invaders": 0.0,
+            # slight misnomer, "scared" here refers to abel, not the invader
+            "abel-dist-to-nearest-nonscared-invader": 0.0,
+            # we're not just * -1 them in case it turns out they would be best
+            # with different weights
+            "abel-dist-to-nearest-scared-invader": 0.0,
+            "abel-close-nonscared-invaders-count": 0.0,
+            "abel-close-scared-invaders-count": 0.0,
+            "normalized-score": 0.0,
+            "abel-correct-zone": 0.0,  # 1/0 if abel is in the enemy area
+            "abel-afraid": 0.0,  # 1/0 if abel is afraid
+            "abel-dead": 0.0,  # 1/0 if abel is dead
+            # these binary values are expected to have relatively high positive
+            # or negative weights
+            "center-distance": 0.0,
+        }
 
-        # now that all actions have been evaluated, return one (use rng if need
-        # to decide between them)
-        if len(bestActions) == 0:
-            print("Abel: Fatal Error: No action was found")
-            return Action("STOP")
+        # this stores precomputed distances in the memory of the agent
+        distances = _get_distances(state, self)
+        # unless I've really messed up my understanding, its the literal distances between the spaces and thus the agent passed is
+        # only for assigning where to store this value. So it can be used with
+        # the pos from both cainIndex and abelIndex
+        max_distance = float(state.board.width * state.board.height)
+
+        # only self.own_index matters, this is the abel specific feature extractor
+
+        # get score that is always positive in our own direction
+        score = state.get_normalized_score(self.own_index)
+        # self.own_index has to be typed to int | None, so pylance is always going to be angry. but there should never be a situation
+        # where it reaches this function as None
+        features["normalized-score"] = score
+        # to abel, only invaders matter
+        invader_positions = state.get_invader_positions(self.own_index)
+        # all these get_[]_positions return list of (index, pos)
+        # invaders don't get scared, you do
+
+        # before calcuating defense features, see if Abel is even alive
+        abelpos = state.get_agent_position(self.own_index)
+        if abelpos is None:
+            features["abel-dead"] = 1.0
+            # if this is the case, the abel related features don't have values assigned to them
+            # their default values of 0.0 are fine
         else:
-            # print("Abel: best actions %s" % str(bestActions))
-            action = self.rng.choice(bestActions)
-            # print("Abel: Chosen action %s" % str(action))
-            return action
-
-    # order for eval and tree return is cainVal, abelVal
-    # get_action is top node of the tree
-    # see the almost identical version of this code in Cain for more detailed
-    # comments
-    # tree needs to be rewritten for both agents so that we can stop wasting
-    # recursions and loops on the self evaluation case
-    def tree(self, state: GameState, depth) -> tuple[float, float]:
-        # print("Abel: tree called at depth %d with agent_index %d" % (depth, state.agent_index))
-        # get legal actions for which agent it is currently the turn of
-        # avoid valueError(agent_index < 0)
-        # this happens when the game has ended, but I have no idea why this is
-        # happening so soon
-        if (state.agent_index < 0):
-            # always keep this statement uncommented so we can try to track
-            # down the cause
-            # print(
-            #     "WARNING: Abel: Agent index %d did %s in depth %d resulting in state.agent_index = -1" %
-            #     (state.last_agent_index, str(
-            #         state.get_last_agent_action(
-            #             state.last_agent_index)), (depth - 1)))
-            # just eval and return that value for this node
-            cainVal, abelVal = self.evaluate(state)
-            return cainVal, abelVal
-        # else:
-        #     actions = state.get_legal_actions()
-        actions = state.get_legal_actions()
-        if not actions:
-            return self.evaluate(state)
-        # score keeping variables. have to initalize all of them regardless for
-        # scope reasons, but only the relevant ones will be used
-        # bestCain = float('-inf')
-        # # has to be a list because what if there are multiple states with same
-        # # bestCain?
-        # bestAbel: list[float] = []
-        # if this does happen pass up average the Abel score (repersenting
-        # random chance of choosing those actions)
-        # scoreTuples: list[tuple[float, float]] = []
-        # reimplementing tree to be a bit more effecient, sorting by agent
-        # first
-        if state.agent_index == self.own_index:
-            bestAbel = float('-inf')
-            bestCains: list[float] = []
-
-            for a in actions:
-                # print("Abel depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
-                new_state = state.generate_successor(a)
-                # score the state either through recursion or calling eval if we're
-                # at base case
-                if depth >= MAX_DEPTH:
-                    cainVal, abelVal = self.evaluate(new_state)
+            if state.is_scared(self.own_index):
+                features["abel-afraid"] = 1.0
+                # leaving the binary features to their default value for the
+                # "no" answer is fine, as they're already 0.0
+            if state.is_ghost(self.own_index):
+                features["abel-correct-zone"] = 1.0
+            else:
+                # problem, we have no way to encourage them to leave their zone if it takes too many steps
+                # until now
+                # also going to have to get maze-distance working and hope that doesn't cause timeout
+                middle: int = int(state.board.width / 2)
+                # encourage moving towards the middle when you're in the wrong side, don't care about height
+                features["center-distance"] = abs(middle - abelpos.col)
+            # --- Defense features ---
+            features["num-invaders"] = float(len(invader_positions))
+            if invader_positions:
+                d = min(distances.get_distance_default(abelpos, pos, max_distance)
+                        for pos in invader_positions.values() if pos is not None)
+                # assign to the apporpirate feature. irrelevant features are
+                # already assigned to 0.0
+                if state.is_scared(self.own_index):
+                    features["abel-dist-to-nearest-scared-invader"] = d / max_distance
                 else:
-                    cainVal, abelVal = self.tree(new_state, depth + 1)
+                    features["abel-dist-to-nearest-nonscared-invader"] = d / max_distance
 
-                if abelVal == bestAbel:
-                    bestCains.append(cainVal)
-                elif abelVal > bestAbel:
-                    bestAbel = abelVal
-                    bestCains = [cainVal]
-
-            return (sum(bestCains) / len(bestCains)), bestAbel
-
-        elif state.agent_index == self.brother_index:
-            bestCain = float('-inf')
-            bestAbels: list[float] = []
-            # if this is Abel decide who to send up based on abelVal
-
-            for a in actions:
-                # print("Abel depth %d, index %d: evaluating action %s" % (depth, state.agent_index, str(a)))
-                new_state = state.generate_successor(a)
-
-                if depth >= MAX_DEPTH:
-                    cainVal, abelVal = self.evaluate(new_state)
+                # close invaders, either good or bad depending on if abel is
+                # currently scared, so they exist differently
+                close_invaders = 0
+                for _, pos in invader_positions.items():
+                    if distances.get_distance_default(
+                            abelpos, pos, max_distance) <= CLOSE_GHOST_DISTANCE:
+                        close_invaders += 1
+                if (state.is_scared(self.own_index)):
+                    features["abel-close-scared-invaders-count"] = float(
+                        close_invaders)
                 else:
-                    cainVal, abelVal = self.tree(new_state, depth + 1)
+                    features["abel-close-nonscared-invaders-count"] = float(
+                        close_invaders)
 
-                if cainVal == bestCain:
-                    bestAbels.append(abelVal)
-                elif cainVal > bestCain:
-                    bestCain = cainVal
-                    bestAbels.clear()
-                    bestAbels.append(abelVal)
+        # cain irrelevant
+        # don't know what this does, but comments says it increases optimization
+        # ""Lower all features for better optimization.""
+        for (key, value) in list(features.items()):
+            features[key] = value / 10.0
 
-            return bestCain, (sum(bestAbels) / len(bestAbels))
-
-        else:
-            # error check for somehow Cain being current agent already occured, unessecary here
-            # currently all actions from opponents are assumed to have equal
-            # likelyhoods, so expectimax is calcuated as simple average
-            cainTotal = 0.0
-            abelTotal = 0.0
-
-            for a in actions:
-                new_state = state.generate_successor(a)
-
-                if depth >= MAX_DEPTH:
-                    cainVal, abelVal = self.evaluate(new_state)
-                else:
-                    cainVal, abelVal = self.tree(new_state, depth + 1)
-
-                cainTotal += cainVal
-                abelTotal += abelVal
-
-            n = len(actions)
-            # after summing time to divide
-            return cainTotal / n, abelTotal / n
+        return features

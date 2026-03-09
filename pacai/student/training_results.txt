@@ -1,0 +1,73 @@
+tournaments are half on red, half on blue
+5 matches on capture default, 6 on random
+12 possible random boards
+carry over training values from previous settings, as our weights need to be neutral
+used this alternating system to try to avoid bais
+25 for each color and each random map
+25 * 12 = 300
+for half the training to be on default, 300 epochs per color
+order:
+300 red default
+300 blue default
+25 red random 1
+25 blue random 1
+25 red random 2
+25 blue random 2
+25 red random 3
+25 blue random 3
+25 red random 4
+25 blue random 4
+25 red random 0
+25 blue random 0
+25 red random 5
+25 blue random 5
+25 red random 6
+25 blue random 6
+25 red random 7
+25 blue random 7
+25 red random 8
+25 blue random 8
+25 red random 9
+25 blue random 9
+25 red random 10
+25 blue random 10
+25 red random 11
+25 blue random 11
+# moved zero to the end because its large size made it preform very poorly on manual
+Cain manual:
+  # offense
+            "cain-dist-to-enemy-food": -4.0,      # closer to food is better
+            "enemy-food-left": -1.0,         # fewer left is better
+            "cain-close-food-count": 1.5,         # more nearby food is gooder
+            # safety vs defenders
+            # farther from defenders is better
+            "cain-dist-to-nearest-nonscared-defender": 2.0,
+            "cain-dist-to-nearest-scared-defender": -2.0,  # unless they're scared
+            "cain-close-nonscared-defenders-count": -3.0,   # being near defenders is bad
+            "cain-close-scared-defenders-count": 3.0,  # unless they're scared
+            "scared-defenders-extant": 1.2,  # all extant scared defenders
+            # irrelevant features removed
+
+            "normalized-score": 15.0,  # the actual score is extremely important
+            "cain-correct-zone": 10.0,  # important to be in the correct zone
+            # but it doesn't matter to cain if abel is in the correct zone or
+            # not
+            
+            "cain-afraid": -0.3,
+            # being dead is bad. but because of quick respawn isn't as
+            # important as the score
+            "cain-dead": -10.0,
+
+Abel:
+# defense
+            "num-invaders": -1.0,             # invaders bad
+            "abel-dist-to-nearest-nonscared-invader": -6.0,  # closer to invader is better
+            "abel-dist-to-nearest-scared-invader": 6.0,  # unless abel is scared
+            "abel-close-nonscared-invaders-count": 3.0,  # same idea with these values
+            "abel-close-scared-invaders-count": -3.0,
+            # removed weights irrelevant to Abel
+
+            "normalized-score": 15.0,  # score extremely important
+            "abel-correct-zone": 10.0,  # 1/0 if abel is in the enemy area
+            "abel-afraid": -3.0,  # as a defender, abel cares much more about being afraid
+            "abel-dead": -10.0,  # 1/0 if abel is dead
