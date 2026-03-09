@@ -58,8 +58,6 @@ class Eve(pacai.core.agent.Agent):
         print(features)
         print("Weights: ")
         print(self.weights)
-        # print("AbelWeights: ")
-        # print(self.abelWeights)
         Total: float = 0.0
         for f, val in features.items():
             # print("evaluting weights for %s" % (f))
@@ -229,8 +227,28 @@ class Cain(Eve):
         super().__init__(**kwargs)
         # override weights
         self.weights: Feature.WeightDict = {
-            "cain-afraid": -1.7965097781519498e+133, "cain-close-food-count": 1.5, "cain-close-nonscared-defenders-count": -3.0, "cain-close-scared-defenders-count": 3.0, "cain-correct-zone": 50.0, "cain-dead": -10.0, "cain-dist-to-enemy-food": -1.1976027048494256e+132, "cain-dist-to-nearest-nonscared-defender": -1.7366235403703374e+132, "cain-dist-to-nearest-scared-defender": -2.0, "center-distance": -3.595133973860125e+133, "enemy-food-left": -1.5090682136476377e+133, "normalized-score": 7.545547319208212e+135        }
-        # index member variables held by eve
+            "cain-dist-to-enemy-food": -4.0,      # closer to food is better
+            "enemy-food-left": -1.0,         # fewer left is better
+            "cain-close-food-count": 1.5,         # more nearby food is gooder
+            # safety vs defenders
+            # farther from defenders is better
+            "cain-dist-to-nearest-nonscared-defender": 2.0,
+            "cain-dist-to-nearest-scared-defender": -2.0,  # unless they're scared
+            "cain-close-nonscared-defenders-count": -3.0,   # being near defenders is bad
+            "cain-close-scared-defenders-count": 3.0,  # unless they're scared
+            # irrelevant features removed
+
+            "normalized-score": 15.0,  # the actual score is extremely important
+            "cain-correct-zone": 10.0,  # important to be in the correct zone
+            # but it doesn't matter to cain if abel is in the correct zone or
+            # not
+            
+            "cain-afraid": -0.3,
+            # being dead is bad. but because of quick respawn isn't as
+            # important as the score
+            "cain-dead": -10.0,
+            "center-distance": -3.0
+        }        # index member variables held by eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next. Could be cain or abel
     # the agent from state is who is at the bottom of the tree, and is irrelevant
@@ -323,25 +341,25 @@ class Cain(Eve):
                     distances.get_distance_default(
                         cainpos, pos, max_distance) for (
                         _, pos) in nonscared_defenders if pos is not None)
-                features["cain-dist-to-nearest-nonscared-defender"] = d / max_distance
+                features["cain-dist-to-nearest-nonscared-defender"] = d
             if scared_defenders:
                 d = min(
                     distances.get_distance_default(
                         cainpos, pos, max_distance) for (
                         _, pos) in scared_defenders if pos is not None)
-                features["cain-dist-to-nearest-scared-defender"] = d / max_distance
+                features["cain-dist-to-nearest-scared-defender"] = d
             # this is also only relevant to cain
             # --- Food features ---
             food = state.get_food(self.own_index)
             if food:
                 d = min(
-                    distances.get_distance_default(cainpos, fpos, max_distance)
+                    distances.get_distance_default(cainpos, fpos, 0.0)
                     for fpos in food
                 )
-                features["cain-dist-to-enemy-food"] = d / max_distance
+                features["cain-dist-to-enemy-food"] = d
                 # not sure what this extra division here is for, but I'll leave
                 # it
-                features["enemy-food-left"] = float(len(food)) / 50.0
+                features["enemy-food-left"] = float(len(food))
 
             # close defenders (danger (or opportuinity if they're scared!) for
             # Cain)
@@ -371,8 +389,8 @@ class Cain(Eve):
 
         # thing from the dummy extractor I don't understand, but we need all the optimization we can get
         # ""Lower all features for better optimization.""
-        for (key, value) in list(features.items()):
-            features[key] = value / 10.0
+        #for (key, value) in list(features.items()):
+            #features[key] = value / 10.0
 
         return features
 
@@ -382,8 +400,19 @@ class Abel(Eve):
         super().__init__(**kwargs)
         # now weights are only held by the relevant agent
         self.weights: Feature.FeatureDict = {
-            "abel-afraid": -9.548418843070158e+110, "abel-close-nonscared-invaders-count": 3.0096714435460283, "abel-close-scared-invaders-count": -3.0, "abel-correct-zone": 1.2251152976524585e+151, "abel-dead": 5.196665615251054e+112, "abel-dist-to-nearest-nonscared-invader": 7.759052118423933e+149, "abel-dist-to-nearest-scared-invader": -6.370075460103848e+108, "center-distance": -5.0, "normalized-score": -5.145626725433997e+153, "num-invaders": 1.2251152976524585e+151        }
-        
+            "num-invaders": -1.0,             # invaders bad
+            "abel-dist-to-nearest-nonscared-invader": -6.0,  # closer to invader is better
+            "abel-dist-to-nearest-scared-invader": 6.0,  # unless abel is scared
+            "abel-close-nonscared-invaders-count": 3.0,  # same idea with these values
+            "abel-close-scared-invaders-count": -3.0,
+            # removed weights irrelevant to Abel
+
+            "normalized-score": 15.0,  # score extremely important
+            "abel-correct-zone": 10.0,  # 1/0 if abel is in the enemy area
+            "abel-afraid": -3.0,  # as a defender, abel cares much more about being afraid
+            "abel-dead": -10.0,  # 1/0 if abel is dead    
+            "center-distance": -3.0  
+        }  
         # own/brother index memeber variables held by Eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next.
@@ -451,14 +480,14 @@ class Abel(Eve):
             # --- Defense features ---
             features["num-invaders"] = float(len(invader_positions))
             if invader_positions:
-                d = min(distances.get_distance_default(abelpos, pos, max_distance)
+                d = min(distances.get_distance_default(abelpos, pos, 0.0)
                         for pos in invader_positions.values() if pos is not None)
                 # assign to the apporpirate feature. irrelevant features are
                 # already assigned to 0.0
                 if state.is_scared(self.own_index):
-                    features["abel-dist-to-nearest-scared-invader"] = d / max_distance
+                    features["abel-dist-to-nearest-scared-invader"] = d
                 else:
-                    features["abel-dist-to-nearest-nonscared-invader"] = d / max_distance
+                    features["abel-dist-to-nearest-nonscared-invader"] = d
 
                 # close invaders, either good or bad depending on if abel is
                 # currently scared, so they exist differently
@@ -477,7 +506,7 @@ class Abel(Eve):
         # cain irrelevant
         # don't know what this does, but comments says it increases optimization
         # ""Lower all features for better optimization.""
-        for (key, value) in list(features.items()):
-            features[key] = value / 10.0
+        #for (key, value) in list(features.items()):
+            #features[key] = value / 10.0
 
         return features

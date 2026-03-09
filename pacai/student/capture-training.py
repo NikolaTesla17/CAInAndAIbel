@@ -303,11 +303,14 @@ class Learning_Abel(capture.Abel):
         # print("Evaluating " + str(mdp_state))
         # looks toward the future more than the actual agent
         actions: list[action.Action] = game_state.get_legal_actions()
+        print("in get_mdp_state_value:")
+        print("legal actins: %s" % str(actions))
         maxValue = float('-inf')
         for a in actions:
             new_state = game_state.generate_successor(a)
             # have to make new state ourselves
             q = self.get_qvalue(game_state, new_state, a)
+            print("%s: %f" % (str(a), q))
             if q > maxValue:
                 maxValue = q
         return maxValue
@@ -342,11 +345,11 @@ class Learning_Abel(capture.Abel):
         # print("updating state %s:" % (old_game_state.get_agent_position(0)))
         # print("Features: %s" % (features))
         # print("Current weights: %s" % (self.weights))
-        # print("correction = %f = (%f + %f * %f) - %f" % (correction, reward, self.discount_rate,
-        # self.get_mdp_state_value(old_game_state, old_game_state), self.get_qvalue(old_mdp_state, old_game_state, action)))
+        print("correction = %f = (%f + %f * %f) - %f" % (correction, reward, self.discount_rate,
+        self.get_mdp_state_value(new_game_state), self.get_qvalue(old_game_state, new_game_state, action)))
         for key, value in self.weights.items():
             # print("updating [%s: %f]" % (str(key), value))
             newWeight = value + self.learning_rate * correction * features.get(key, 0.0)
-            # print("%f = %f + %f * %f * %f" % (newWeight, value, self.learning_rate, correction, features.get(key, 0.0)))
+            print("%f = %f + %f * %f * %f" % (newWeight, value, self.learning_rate, correction, features.get(key, 0.0)))
             self.weights[key] = newWeight
         print("new weights are: %s" % str(self.weights))

@@ -77,7 +77,6 @@ Cain manual:
             "cain-dist-to-nearest-scared-defender": -2.0,  # unless they're scared
             "cain-close-nonscared-defenders-count": -3.0,   # being near defenders is bad
             "cain-close-scared-defenders-count": 3.0,  # unless they're scared
-            "scared-defenders-extant": 1.2,  # all extant scared defenders
             # irrelevant features removed
 
             "normalized-score": 15.0,  # the actual score is extremely important
