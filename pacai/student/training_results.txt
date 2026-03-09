@@ -7,32 +7,64 @@ used this alternating system to try to avoid bais
 25 * 12 = 300
 for half the training to be on default, 300 epochs per color
 order:
-300 red default
-300 blue default
-25 red random 1
-25 blue random 1
-25 red random 2
-25 blue random 2
-25 red random 3
-25 blue random 3
-25 red random 4
-25 blue random 4
-25 red random 0
-25 blue random 0
-25 red random 5
-25 blue random 5
-25 red random 6
-25 blue random 6
-25 red random 7
-25 blue random 7
-25 red random 8
-25 blue random 8
-25 red random 9
-25 blue random 9
-25 red random 10
-25 blue random 10
-25 red random 11
-25 blue random 11
+python3 -m pacai.capture --red capture-team-training --blue capture-team-baseline --ui null --num-training 300 --num-games 0 --debug
+<pacai.student.capture-training.Learning_Cain object at 0x7d030dbd0770> Weights: {"cain-afraid": -8.050578483476719e+80, "cain-close-food-count": 1.5, "cain-close-nonscared-defenders-count": -3.0, "cain-close-scared-defenders-count": 3.0, "cain-correct-zone": 50.0, "cain-dead": -10.0, "cain-dist-to-enemy-food": 6.718766229251737e+76, "cain-dist-to-nearest-nonscared-defender": -6.439823136689753e+79, "cain-dist-to-nearest-scared-defender": -2.0, "center-distance": -2.4161463947523276e+81, "enemy-food-left": 8.05704857094623e+77, "normalized-score": 3.3814334700996585e+83,}.
+2026-03-09 14:33:27,821 [DEBUG   ] - capture-training.py:218 -- Weights: {"abel-afraid": 1.01871836900332e+85, "abel-close-nonscared-invaders-count": 3.0096714435460283, "abel-close-scared-invaders-count": -3.0, "abel-correct-zone": 1.01871836900332e+85, "abel-dead": -10.0, "abel-dist-to-nearest-nonscared-invader": -5.046351651718357e+58, "abel-dist-to-nearest-scared-invader": 5.772727747792354e+83, "center-distance": -5.0, "normalized-score": -4.278734146657471e+87, "num-invaders": 1.01871836900332e+85}.
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 300 --num-games 0 --debug
+capture-training.py:62 -- <pacai.student.capture-training.Learning_Cain object at 0x73659e275b80> Weights: {"cain-afraid": -1.7965097781519498e+133, "cain-close-food-count": 1.5, "cain-close-nonscared-defenders-count": -3.0, "cain-close-scared-defenders-count": 3.0, "cain-correct-zone": 50.0, "cain-dead": -10.0, "cain-dist-to-enemy-food": -1.1976027048494256e+132, "cain-dist-to-nearest-nonscared-defender": -1.7366235403703374e+132, "cain-dist-to-nearest-scared-defender": -2.0, "center-distance": -3.595133973860125e+133, "enemy-food-left": -1.5090682136476377e+133, "normalized-score": 7.545547319208212e+135}.
+2026-03-09 14:45:50,571 [DEBUG   ] - capture-training.py:218 -- Weights: {"abel-afraid": -9.548418843070158e+110, "abel-close-nonscared-invaders-count": 3.0096714435460283, "abel-close-scared-invaders-count": -3.0, "abel-correct-zone": 1.2251152976524585e+151, "abel-dead": 5.196665615251054e+112, "abel-dist-to-nearest-nonscared-invader": 7.759052118423933e+149, "abel-dist-to-nearest-scared-invader": -6.370075460103848e+108, "center-distance": -5.0, "normalized-score": -5.145626725433997e+153, "num-invaders": 1.2251152976524585e+151}.
+
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-1
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-1
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-2
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-2
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-3
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-3
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-4
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-4
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-5
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-5
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-6
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-6
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-7
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-7
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-8
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-8
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-9
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-9
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-10
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-10
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-11
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-11
+
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-0
+
+python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-0
+
+
 # moved zero to the end because its large size made it preform very poorly on manual
 Cain manual:
   # offense

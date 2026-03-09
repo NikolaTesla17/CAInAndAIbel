@@ -12,6 +12,7 @@ import typing
 import pacai.core.gamestate
 import pacai.search.distance
 from pacai.core.board import Position
+import sys
 # ok the way WeightDict and FeatureDict work is that they're just type aliases. But I have to use this to be able to reuse the code
 # about packing/unpacking training from pa3
 import pacai.core.features as Feature
@@ -53,15 +54,18 @@ class Eve(pacai.core.agent.Agent):
     # now only returns a single float, which is that agent's perspective
     def evaluate(self, state: GameState) -> float:
         features: Feature.FeatureDict = self.feature_extractor(state)
-        # print("features: ")
-        # print(features)
-        # print("CainWeights: ")
-        # print(self.cainWeights)
+        print("features: ")
+        print(features)
+        print("Weights: ")
+        print(self.weights)
         # print("AbelWeights: ")
         # print(self.abelWeights)
         Total: float = 0.0
         for f, val in features.items():
             # print("evaluting weights for %s" % (f))
+            if self.weights[f] == float('nan'): # for tracking down a bug. comment out when fixed
+                print("missing a weight")
+                sys.exit()
             Total = Total + (val * self.weights[f])
             # cain and able have different keys in their dict, but they should be the same as the features their feature_extractor returns
         return Total
@@ -108,16 +112,14 @@ class Eve(pacai.core.agent.Agent):
         # actions = [a for a in state.get_legal_actions() if str(a) != 'STOP']
         # if not actions:
         #     actions = state.get_legal_actions()
-        # print("abel all actions: %s" % (str(actions)))
+        print("Agent %d all actions: %s" % (self.own_index, str(actions)))
         bestScore = float('-inf')
         bestActions: list[Action] = []
         for a in actions:
             new_state = state.generate_successor(a)
             # call first with depth 1, this function is essentialy depth 0
             score = self.tree(new_state, 1)
-            # print(
-            #     "Cain: evaluated action %s to have score %f" %
-            #     (str(a), Cainscore))
+            print("evaluated action %s to have score %f" % (str(a), score))
             if score == bestScore:
                 # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
                 # add to bestActions
@@ -135,7 +137,7 @@ class Eve(pacai.core.agent.Agent):
         # to decide between them)
         if len(bestActions) == 0:
             print("Agent %d: Fatal Error: No action was found" % (self.own_index))
-            return Action("STOP")
+            sys.exit()
         else:
             # print("Cain: best actions %s" % str(bestActions))
             action = self.rng.choice(bestActions)
@@ -227,30 +229,7 @@ class Cain(Eve):
         super().__init__(**kwargs)
         # override weights
         self.weights: Feature.WeightDict = {
-            # offense
-            "cain-dist-to-enemy-food": -4.0,      # closer to food is better
-            "enemy-food-left": -1.0,         # fewer left is better
-            "cain-close-food-count": 1.5,         # more nearby food is gooder
-            # safety vs defenders
-            # farther from defenders is better
-            "cain-dist-to-nearest-nonscared-defender": 2.0,
-            "cain-dist-to-nearest-scared-defender": -2.0,  # unless they're scared
-            "cain-close-nonscared-defenders-count": -3.0,   # being near defenders is bad
-            "cain-close-scared-defenders-count": 3.0,  # unless they're scared
-            "scared-defenders-extant": 1.2,  # all extant scared defenders
-            # irrelevant features removed
-
-            "normalized-score": 15.0,  # the actual score is extremely important
-            "cain-correct-zone": 50.0,  # important to be in the correct zone
-            # but it doesn't matter to cain if abel is in the correct zone or
-            # not
-            
-            "cain-afraid": -0.3,
-            # being dead is bad. but because of quick respawn isn't as
-            # important as the score
-            "cain-dead": -10.0,
-            "center-distance": -30.0, # to get to switch zones
-        }
+            "cain-afraid": -1.7965097781519498e+133, "cain-close-food-count": 1.5, "cain-close-nonscared-defenders-count": -3.0, "cain-close-scared-defenders-count": 3.0, "cain-correct-zone": 50.0, "cain-dead": -10.0, "cain-dist-to-enemy-food": -1.1976027048494256e+132, "cain-dist-to-nearest-nonscared-defender": -1.7366235403703374e+132, "cain-dist-to-nearest-scared-defender": -2.0, "center-distance": -3.595133973860125e+133, "enemy-food-left": -1.5090682136476377e+133, "normalized-score": 7.545547319208212e+135        }
         # index member variables held by eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next. Could be cain or abel
@@ -403,20 +382,7 @@ class Abel(Eve):
         super().__init__(**kwargs)
         # now weights are only held by the relevant agent
         self.weights: Feature.FeatureDict = {
-            # defense
-            "num-invaders": -1.0,             # invaders bad
-            "abel-dist-to-nearest-nonscared-invader": -6.0,  # closer to invader is better
-            "abel-dist-to-nearest-scared-invader": 6.0,  # unless abel is scared
-            "abel-close-nonscared-invaders-count": 3.0,  # same idea with these values
-            "abel-close-scared-invaders-count": -3.0,
-            # removed weights irrelevant to Abel
-
-            "normalized-score": 15.0,  # score extremely important
-            "abel-correct-zone": 10.0,  # 1/0 if abel is in the enemy area
-            "abel-afraid": -3.0,  # as a defender, abel cares much more about being afraid
-            "abel-dead": -10.0,  # 1/0 if abel is dead
-            "center-distance": -5.0,
-        }
+            "abel-afraid": -9.548418843070158e+110, "abel-close-nonscared-invaders-count": 3.0096714435460283, "abel-close-scared-invaders-count": -3.0, "abel-correct-zone": 1.2251152976524585e+151, "abel-dead": 5.196665615251054e+112, "abel-dist-to-nearest-nonscared-invader": 7.759052118423933e+149, "abel-dist-to-nearest-scared-invader": -6.370075460103848e+108, "center-distance": -5.0, "normalized-score": -5.145626725433997e+153, "num-invaders": 1.2251152976524585e+151        }
         
         # own/brother index memeber variables held by Eve
 

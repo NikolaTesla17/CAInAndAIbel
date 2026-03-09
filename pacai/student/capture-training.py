@@ -59,7 +59,7 @@ class Learning_Cain(capture.Cain):
 
     def game_complete(self, final_state: GameState) -> None:
         super().game_complete(final_state)
-        logging.debug("Weights: %s.", edq.util.json.dumps(self.weights)) # very important for copying weights to capture.py
+        logging.debug("%s Weights: %s." % (str(self), edq.util.json.dumps(self.weights))) # very important for copying weights to capture.py
 
     def game_start(self, initial_state: GameState) -> None:
         self.last_state = initial_state
@@ -126,9 +126,10 @@ class Learning_Cain(capture.Cain):
     def get_action(self, state: GameState) -> action.Action:
         # Update the agent by learning from the environment.
         # This code should not change and always be the first thing done in this method.
+        print("getting new action for %d" % self.agent_index)
         self.update(state)
         # use epilsion to calcuate if I do the policy action or a random one
-        
+        print("after updating that process")
         legal_actions: list[action.Action] = state.get_legal_actions()
         roll = self.rng.randrange(0, 100)
         if roll <= self.exploration_rate:
@@ -348,3 +349,4 @@ class Learning_Abel(capture.Abel):
             newWeight = value + self.learning_rate * correction * features.get(key, 0.0)
             # print("%f = %f + %f * %f * %f" % (newWeight, value, self.learning_rate, correction, features.get(key, 0.0)))
             self.weights[key] = newWeight
+        print("new weights are: %s" % str(self.weights))
