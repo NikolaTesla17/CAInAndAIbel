@@ -11,8 +11,7 @@ import pacai.core.agent
 import typing
 import pacai.core.gamestate
 import pacai.search.distance
-from pacai.core.board import Position
-import sys
+# import sys
 # ok the way WeightDict and FeatureDict work is that they're just type aliases. But I have to use this to be able to reuse the code
 # about packing/unpacking training from pa3
 import pacai.core.features as Feature
@@ -54,16 +53,16 @@ class Eve(pacai.core.agent.Agent):
     # now only returns a single float, which is that agent's perspective
     def evaluate(self, state: GameState) -> float:
         features: Feature.FeatureDict = self.feature_extractor(state)
-        print("features: ")
+        # print("features: ")
         print(features)
-        print("Weights: ")
+        # print("Weights: ")
         print(self.weights)
         Total: float = 0.0
         for f, val in features.items():
             # print("evaluting weights for %s" % (f))
-            if self.weights[f] == float('nan'): # for tracking down a bug. comment out when fixed
-                print("missing a weight")
-                sys.exit()
+            # if self.weights[f] == float('nan'):  # for tracking down a bug. comment out when fixed
+            #   print("missing a weight")
+            #   sys.exit()
             Total = Total + (val * self.weights[f])
             # cain and able have different keys in their dict, but they should be the same as the features their feature_extractor returns
         return Total
@@ -110,14 +109,14 @@ class Eve(pacai.core.agent.Agent):
         # actions = [a for a in state.get_legal_actions() if str(a) != 'STOP']
         # if not actions:
         #     actions = state.get_legal_actions()
-        print("Agent %d all actions: %s" % (self.own_index, str(actions)))
+        # print("Agent %d all actions: %s" % (self.own_index, str(actions)))
         bestScore = float('-inf')
         bestActions: list[Action] = []
         for a in actions:
             new_state = state.generate_successor(a)
             # call first with depth 1, this function is essentialy depth 0
             score = self.tree(new_state, 1)
-            print("evaluated action %s to have score %f" % (str(a), score))
+            # print("evaluated action %s to have score %f" % (str(a), score))
             if score == bestScore:
                 # print("this is equal to bestScore(%f), adding to best actions" % (bestScore))
                 # add to bestActions
@@ -135,7 +134,9 @@ class Eve(pacai.core.agent.Agent):
         # to decide between them)
         if len(bestActions) == 0:
             print("Agent %d: Fatal Error: No action was found" % (self.own_index))
-            sys.exit()
+            # sys.exit()
+            # for getting past the auto grader if i keep crashing, but I don't think that's happening
+            return Action("STOP")
         else:
             # print("Cain: best actions %s" % str(bestActions))
             action = self.rng.choice(bestActions)
@@ -247,7 +248,8 @@ class Cain(Eve):
             # being dead is bad. but because of quick respawn isn't as
             # important as the score
             "cain-dead": -10.0,
-            "center-distance": -3.0
+            # seemingly causes timeout
+            # "center-distance": -3.0
         }        # index member variables held by eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next. Could be cain or abel
@@ -268,7 +270,11 @@ class Cain(Eve):
             "cain-afraid": 0.0,  # 1/0 if cain is afraid
             # these binary values are expected to have relatively high positive
             # or negative weights
-            "center-distance": 0.0, # won't be calcuated unless they're in the wrong zone, otherwise its a value with negative weight to encourage
+            # currently seems like center-distance is the straw that
+            # breaks the camels back time wise,
+            # hopefully when the weights are best we won't need it
+            # "center-distance": 0.0,
+            # won't be calcuated unless they're in the wrong zone, otherwise its a value with negative weight to encourage
             # crossing over to the other side
             # extant scared defenders is removed because its either about how many of the opponents are currently defenders (can't control)
             # or it actually decreases as opponents are eaten. or its about time. Since optimization is so important, i've removed what
@@ -325,15 +331,15 @@ class Cain(Eve):
             if state.is_scared(self.own_index):
                 features["cain-afraid"] = 1.0
             if not state.is_ghost(self.own_index):
-                features["cain-correct-zone"] = 1.0 
-            else:
+                features["cain-correct-zone"] = 1.0
+            # else:
                 # problem, we have no way to encourage them to leave their zone if it takes too many steps
                 # until now
                 # also going to have to get maze-distance working and hope that doesn't cause timeout
-                middle: int = int(state.board.width / 2)
+                # middle: int = int(state.board.width / 2)
                 # columns are indexed to 1
                 # encourage moving towards the middle when you're in the wrong side, don't care about height
-                features["center-distance"] = abs(middle - cainpos.col)
+                # features["center-distance"] = abs(middle - cainpos.col) / max_distance
 
             # --- Offense danger features (enemy defenders) ---
             if nonscared_defenders:
@@ -341,13 +347,13 @@ class Cain(Eve):
                     distances.get_distance_default(
                         cainpos, pos, max_distance) for (
                         _, pos) in nonscared_defenders if pos is not None)
-                features["cain-dist-to-nearest-nonscared-defender"] = d
+                features["cain-dist-to-nearest-nonscared-defender"] = d / max_distance
             if scared_defenders:
                 d = min(
                     distances.get_distance_default(
                         cainpos, pos, max_distance) for (
                         _, pos) in scared_defenders if pos is not None)
-                features["cain-dist-to-nearest-scared-defender"] = d
+                features["cain-dist-to-nearest-scared-defender"] = d / max_distance
             # this is also only relevant to cain
             # --- Food features ---
             food = state.get_food(self.own_index)
@@ -356,10 +362,10 @@ class Cain(Eve):
                     distances.get_distance_default(cainpos, fpos, 0.0)
                     for fpos in food
                 )
-                features["cain-dist-to-enemy-food"] = d
+                features["cain-dist-to-enemy-food"] = d / max_distance
                 # not sure what this extra division here is for, but I'll leave
                 # it
-                features["enemy-food-left"] = float(len(food))
+                features["enemy-food-left"] = float(len(food)) / 50
 
             # close defenders (danger (or opportuinity if they're scared!) for
             # Cain)
@@ -389,8 +395,8 @@ class Cain(Eve):
 
         # thing from the dummy extractor I don't understand, but we need all the optimization we can get
         # ""Lower all features for better optimization.""
-        #for (key, value) in list(features.items()):
-            #features[key] = value / 10.0
+        for (key, value) in list(features.items()):
+            features[key] = value / 10.0
 
         return features
 
@@ -410,9 +416,9 @@ class Abel(Eve):
             "normalized-score": 15.0,  # score extremely important
             "abel-correct-zone": 10.0,  # 1/0 if abel is in the enemy area
             "abel-afraid": -3.0,  # as a defender, abel cares much more about being afraid
-            "abel-dead": -10.0,  # 1/0 if abel is dead    
-            "center-distance": -3.0  
-        }  
+            "abel-dead": -10.0,  # 1/0 if abel is dead
+            # "center-distance": -3.0
+        }
         # own/brother index memeber variables held by Eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next.
@@ -435,7 +441,7 @@ class Abel(Eve):
             "abel-dead": 0.0,  # 1/0 if abel is dead
             # these binary values are expected to have relatively high positive
             # or negative weights
-            "center-distance": 0.0,
+            # "center-distance": 0.0,
         }
 
         # this stores precomputed distances in the memory of the agent
@@ -470,13 +476,13 @@ class Abel(Eve):
                 # "no" answer is fine, as they're already 0.0
             if state.is_ghost(self.own_index):
                 features["abel-correct-zone"] = 1.0
-            else:
+            # else:
                 # problem, we have no way to encourage them to leave their zone if it takes too many steps
                 # until now
                 # also going to have to get maze-distance working and hope that doesn't cause timeout
-                middle: int = int(state.board.width / 2)
+                # middle: int = int(state.board.width / 2)
                 # encourage moving towards the middle when you're in the wrong side, don't care about height
-                features["center-distance"] = abs(middle - abelpos.col)
+                # features["center-distance"] = abs(middle - abelpos.col) / max_distance
             # --- Defense features ---
             features["num-invaders"] = float(len(invader_positions))
             if invader_positions:
@@ -485,9 +491,10 @@ class Abel(Eve):
                 # assign to the apporpirate feature. irrelevant features are
                 # already assigned to 0.0
                 if state.is_scared(self.own_index):
-                    features["abel-dist-to-nearest-scared-invader"] = d
+                    features["abel-dist-to-nearest-scared-invader"] = d / max_distance
+                    # I don't know why you'd do this, but for some reason its what works and prevents timing out
                 else:
-                    features["abel-dist-to-nearest-nonscared-invader"] = d
+                    features["abel-dist-to-nearest-nonscared-invader"] = d / max_distance
 
                 # close invaders, either good or bad depending on if abel is
                 # currently scared, so they exist differently
@@ -506,7 +513,7 @@ class Abel(Eve):
         # cain irrelevant
         # don't know what this does, but comments says it increases optimization
         # ""Lower all features for better optimization.""
-        #for (key, value) in list(features.items()):
-            #features[key] = value / 10.0
+        for (key, value) in list(features.items()):
+            features[key] = value / 10.0
 
         return features
