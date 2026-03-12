@@ -194,16 +194,62 @@ class QLearningAgent(pacai.agents.mdp.MDPAgent):
         # This code should not change and anways be the first thing done in this method.
         self.update(state)
 
+        mdp_state = self.mdp_state_class(position = state.get_agent_position(), game_state = state)
+        legal_actions = state.get_legal_actions()
+
+        if len(legal_actions) == 0:
+            return pacai.core.action.STOP
+
+        # explore with probability epsilon
+        if self.training and self.rng.random() < self.epsilon:
+            return self.rng.choice(legal_actions)
+
+        # otherwise use policy
+        return self.get_policy_action(mdp_state, state)
+
         # *** Your Code Here ***
-        return pacai.core.action.STOP
+        # return pacai.core.action.STOP
 
     def get_mdp_state_value(self, mdp_state: pacai.core.mdp.MDPStatePosition, game_state: pacai.core.gamestate.GameState) -> float:
         # *** Your Code Here ***
-        return 0.0
+        legal_actions = game_state.get_legal_actions()
+
+        if len(legal_actions) == 0:
+            return 0.0
+
+        bestValue = float('-inf')
+
+        for action in legal_actions:
+            qValue = self.get_qvalue(mdp_state, game_state, action)
+            if qValue > bestValue:
+                bestValue = qValue
+
+        return bestValue
+
 
     def get_policy_action(self, mdp_state: pacai.core.mdp.MDPStatePosition, game_state: pacai.core.gamestate.GameState) -> pacai.core.action.Action:
-        # *** Your Code Here ***
-        return pacai.core.action.STOP
+        legal_actions = game_state.get_legal_actions()
+
+        if len(legal_actions) == 0:
+            return pacai.core.action.STOP
+
+        bestScore = float('-inf')
+        bestActions = []
+
+        for action in legal_actions:
+            qValue = self.get_qvalue(mdp_state, game_state, action)
+
+            if qValue == bestScore:
+                bestActions.append(action)
+            elif qValue > bestScore:
+                bestScore = qValue
+                bestActions.clear()
+                bestActions.append(action)
+
+        if len(bestActions) == 0:
+            return pacai.core.action.STOP
+
+        return self.rng.choice(bestActions)
 
     def get_qvalue(self,
             mdp_state: pacai.core.mdp.MDPStatePosition,
@@ -225,6 +271,16 @@ class QLearningAgent(pacai.agents.mdp.MDPAgent):
         """
 
         # *** Your Code Here ***
+        old_mdp_state = self.mdp_state_class(position = old_position, game_state = old_game_state)
+        new_mdp_state = self.mdp_state_class(position = new_position, game_state = new_game_state)
+
+        oldQValue = self.get_qvalue(old_mdp_state, old_game_state, action)
+        futureValue = self.get_mdp_state_value(new_mdp_state, new_game_state)
+
+        sample = reward + (self.discount_rate * futureValue)
+        newQValue = ((1.0 - self.learning_rate) * oldQValue) + (self.learning_rate * sample)
+
+        self.q_values[(old_mdp_state, action)] = newQValue
 
 class QLearningUserInputAgent(QLearningAgent):
     """

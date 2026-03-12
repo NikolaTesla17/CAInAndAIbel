@@ -16,7 +16,9 @@ capture-training.py:62 -- <pacai.student.capture-training.Learning_Cain object a
 2026-03-09 14:45:50,571 [DEBUG   ] - capture-training.py:218 -- Weights: {"abel-afraid": -9.548418843070158e+110, "abel-close-nonscared-invaders-count": 3.0096714435460283, "abel-close-scared-invaders-count": -3.0, "abel-correct-zone": 1.2251152976524585e+151, "abel-dead": 5.196665615251054e+112, "abel-dist-to-nearest-nonscared-invader": 7.759052118423933e+149, "abel-dist-to-nearest-scared-invader": -6.370075460103848e+108, "center-distance": -5.0, "normalized-score": -5.145626725433997e+153, "num-invaders": 1.2251152976524585e+151}.
 
 
-python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 25 --num-games 0 --debug --board random-1
+python3 -m pacai.capture --blue capture-team-baseline --red capture-team-training --ui null --num-training 1 --num-games 0 --debug --board random-1
+
+
 
 python3 -m pacai.capture --blue capture-team-training --red capture-team-baseline --ui null --num-training 25 --num-games 0 --debug --board random-1
 

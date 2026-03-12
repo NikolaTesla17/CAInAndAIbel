@@ -46,7 +46,8 @@ class Eve(pacai.core.agent.Agent):
         self.brother_index = None
         self.own_index = None
         # a bigger score is better. bad things have negative weights.
-        # if something is universally bad but an agents actions can't effect it (like a dead ally), it isn't included
+        # if something is universally bad but an agents actions can't effect it
+        # (like a dead ally), it isn't included
         self.weights: Feature.WeightDict = {}  # empty dict to be overriden
 
     # evaluate states state based on the specific weights for the relevant agent, which also has a corresponding features extractor function
@@ -54,9 +55,9 @@ class Eve(pacai.core.agent.Agent):
     def evaluate(self, state: GameState) -> float:
         features: Feature.FeatureDict = self.feature_extractor(state)
         # print("features: ")
-        print(features)
+        # print(features)
         # print("Weights: ")
-        print(self.weights)
+        # print(self.weights)
         Total: float = 0.0
         for f, val in features.items():
             # print("evaluting weights for %s" % (f))
@@ -64,15 +65,17 @@ class Eve(pacai.core.agent.Agent):
             #   print("missing a weight")
             #   sys.exit()
             Total = Total + (val * self.weights[f])
-            # cain and able have different keys in their dict, but they should be the same as the features their feature_extractor returns
+            # cain and able have different keys in their dict, but they should
+            # be the same as the features their feature_extractor returns
         return Total
 
     # extracts the relevant features from state
-    # each agent has their own defintion of agent, this feature is supposed to be overriden
+    # each agent has their own defintion of agent, this feature is supposed to
+    # be overriden
     def feature_extractor(self, state: GameState) -> Feature.FeatureDict:
         print("Error: somehow the generic feature_extractor has been called")
         return {}
-        
+
     # to be called by a get_action when own indexes are unknown
     def set_indexes(self, state: GameState):
         # state get agent_index is that of the calling agent
@@ -91,11 +94,12 @@ class Eve(pacai.core.agent.Agent):
             print(
                 "Fatal error: set_indexes called when state.agent_index was %d" %
                 (state.agent_index))
-            
+
     # in this build get_action is the same for both of the brothers, with their eval and feature extractors being different
     # returns best action, picking randomly if multiple. Decides which action is the best based on its personal
     # evaluate function
-    # this one just happens to be copied from Cain so thats why it has the debug prints it does
+    # this one just happens to be copied from Cain so thats why it has the
+    # debug prints it does
     def get_action(self, state: GameState) -> Action:
         # only on first call a game, set up own and brother indexes
         if (self.own_index is None):
@@ -133,16 +137,19 @@ class Eve(pacai.core.agent.Agent):
         # now that all actions have been evaluated, return one (use rng if need
         # to decide between them)
         if len(bestActions) == 0:
-            print("Agent %d: Fatal Error: No action was found" % (self.own_index))
+            print(
+                "Agent %d: Fatal Error: No action was found" %
+                (self.own_index))
             # sys.exit()
-            # for getting past the auto grader if i keep crashing, but I don't think that's happening
+            # for getting past the auto grader if i keep crashing, but I don't
+            # think that's happening
             return Action("STOP")
         else:
             # print("Cain: best actions %s" % str(bestActions))
             action = self.rng.choice(bestActions)
             # print("Cain: Chosen action %s" % str(action))
             return action
-    
+
     # is called by get_action. Tree is passed a state after the action it is being considered
     # for time savings, the tree is calucated as if the brother just does STOP. Each brother has his own evaluate and feature extractor.
     # because of this, it is essentially just an expectimax tree because its just thinking about the next turns the opponents are going to take
@@ -197,10 +204,14 @@ class Eve(pacai.core.agent.Agent):
                 Total += Val
             n = len(actions)
             # hey if agent is crashing it might be because divide by zero is happening here. very unlikely though, so I didn't
-            # write an error catch so pipelining can be more effective, since speed is extremely important rn
+            # write an error catch so pipelining can be more effective, since
+            # speed is extremely important rn
             return Total / n
 
-# i'm pretty sure comput gets the actual distances by traversing the board, so there's nowhere to impliment bfs
+# i'm pretty sure comput gets the actual distances by traversing the
+# board, so there's nowhere to impliment bfs
+
+
 def _get_distances(
         state: pacai.core.gamestate.GameState,
         agent: pacai.core.agent.Agent | None = None) -> pacai.search.distance.DistancePreComputer:
@@ -243,7 +254,7 @@ class Cain(Eve):
             "cain-correct-zone": 10.0,  # important to be in the correct zone
             # but it doesn't matter to cain if abel is in the correct zone or
             # not
-            
+
             "cain-afraid": -0.3,
             # being dead is bad. but because of quick respawn isn't as
             # important as the score
@@ -253,7 +264,8 @@ class Cain(Eve):
         }        # index member variables held by eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next. Could be cain or abel
-    # the agent from state is who is at the bottom of the tree, and is irrelevant
+    # the agent from state is who is at the bottom of the tree, and is
+    # irrelevant
     def feature_extractor(self, state: GameState) -> Feature.FeatureDict:
         # default version of the dictionary with placeholder values so what is
         # used is easily referenced
@@ -322,7 +334,7 @@ class Cain(Eve):
                 scared_defenders.append((idx, pos))
 
         # as cain, no need to extract defense features
-        
+
         # first see if Cain is even alive before computing his relevant stats
         cainpos = state.get_agent_position(self.own_index)
         if cainpos is None:
@@ -353,7 +365,8 @@ class Cain(Eve):
                     distances.get_distance_default(
                         cainpos, pos, max_distance) for (
                         _, pos) in scared_defenders if pos is not None)
-                features["cain-dist-to-nearest-scared-defender"] = d / max_distance
+                features["cain-dist-to-nearest-scared-defender"] = d / \
+                    max_distance
             # this is also only relevant to cain
             # --- Food features ---
             food = state.get_food(self.own_index)
@@ -401,6 +414,8 @@ class Cain(Eve):
         return features
 
 # Abel is the defensive agent
+
+
 class Abel(Eve):
     def __init__(self, **kwargs: typing.Any) -> None:
         super().__init__(**kwargs)
@@ -422,7 +437,8 @@ class Abel(Eve):
         # own/brother index memeber variables held by Eve
 
     # self is the agent who is at the top of the stack calling this to decide what action to take next.
-    # the agent from state is who is at the bottom of the tree, and is irrelevant
+    # the agent from state is who is at the bottom of the tree, and is
+    # irrelevant
     def feature_extractor(self, state: GameState) -> Feature.FeatureDict:
         # default version of the dictionary with placeholder values so what is
         # used is easily referenced
@@ -451,7 +467,8 @@ class Abel(Eve):
         # the pos from both cainIndex and abelIndex
         max_distance = float(state.board.width * state.board.height)
 
-        # only self.own_index matters, this is the abel specific feature extractor
+        # only self.own_index matters, this is the abel specific feature
+        # extractor
 
         # get score that is always positive in our own direction
         score = state.get_normalized_score(self.own_index)
@@ -491,10 +508,13 @@ class Abel(Eve):
                 # assign to the apporpirate feature. irrelevant features are
                 # already assigned to 0.0
                 if state.is_scared(self.own_index):
-                    features["abel-dist-to-nearest-scared-invader"] = d / max_distance
-                    # I don't know why you'd do this, but for some reason its what works and prevents timing out
+                    features["abel-dist-to-nearest-scared-invader"] = d / \
+                        max_distance
+                    # I don't know why you'd do this, but for some reason its
+                    # what works and prevents timing out
                 else:
-                    features["abel-dist-to-nearest-nonscared-invader"] = d / max_distance
+                    features["abel-dist-to-nearest-nonscared-invader"] = d / \
+                        max_distance
 
                 # close invaders, either good or bad depending on if abel is
                 # currently scared, so they exist differently

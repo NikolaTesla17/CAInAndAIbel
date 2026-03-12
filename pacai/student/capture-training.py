@@ -12,7 +12,7 @@ import pacai.core.board
 import pacai.core.action as action
 import pacai.core.agentaction
 from pacai.capture.gamestate import GameState
-
+import math
 #how this works is that alias.py has been modified to include an alias for capture-team-training. use that as an arg to run the training
 def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
     """
@@ -41,7 +41,7 @@ class Learning_Cain(capture.Cain):
         # these values are the defaults specified in pacai/agents/mdp.py
         # these aren't controlled by arguments
         self.discount_rate = 0.9
-        self.learning_rate = 0.5
+        self.learning_rate = 0.01
         self.exploration_rate = 0.3
         self.last_state: GameState | None = None
         self.total_rewards: float = 0.0
@@ -126,20 +126,23 @@ class Learning_Cain(capture.Cain):
     def get_action(self, state: GameState) -> action.Action:
         # Update the agent by learning from the environment.
         # This code should not change and always be the first thing done in this method.
-        print("getting new action for %d" % self.agent_index)
+        if self.own_index is None:
+            self.set_indexes(state)
+
         self.update(state)
         # use epilsion to calcuate if I do the policy action or a random one
-        print("after updating that process")
+
         legal_actions: list[action.Action] = state.get_legal_actions()
-        roll = self.rng.randrange(0, 100)
-        if roll <= self.exploration_rate:
-            # choose random
+
+        if len(legal_actions) == 0:
+            return action.STOP
+
+        if self.training and self.rng.random() < self.exploration_rate:
             a: action.Action = self.rng.choice(legal_actions)
-            # print("Choosing random action " + str(a))
             return a
         else:
-           # our policy is outlined in the parent classes, so just do super
-           return super().get_action(state)
+            # our policy is outlined in the parent classes, so just do super
+            return super().get_action(state)
 
     def get_mdp_state_value(self, game_state: GameState) -> float:
         """Finds the maximum Q-value among all legal actions for a state."""
@@ -147,7 +150,21 @@ class Learning_Cain(capture.Cain):
         # what I want is the score that comes from doing the policy action
         # I essentially need to do super().get_action again, except I return the bestVal instead of actions
         # the cheat for this is to call tree() with depth 0 (and double ignore the print about having the calling agent be in the tree being wrong)
-        return super().tree(game_state, 0)
+        # i don't think it makes sense to be calling tree tbh, we should probably make a new function
+        if game_state.agent_index < 0:
+            return 0.0
+        actions = game_state.get_legal_actions()
+        if len(actions) == 0:
+            return 0.0
+
+        bestValue = float('-inf')
+        for act in actions:
+            successor = game_state.generate_successor(act)
+            qValue = self.get_qvalue(game_state, successor, act)
+            if qValue > bestValue:
+                bestValue = qValue
+
+        return bestValue
 
     def get_qvalue(self, old_state, new_state,
         action: action.Action) -> float:
@@ -175,6 +192,8 @@ class Learning_Cain(capture.Cain):
             correction: float = ((reward + self.discount_rate * self.get_mdp_state_value(new_game_state))
                             - self.get_qvalue(old_game_state, new_game_state, action))
         # get all of the features
+        if math.isnan(correction):
+            return
         features = self.feature_extractor(new_game_state) # unlike how pa3 does it, feature extractor wants the new state
         # print("updating state %s:" % (old_game_state.get_agent_position(0)))
         # print("Features: %s" % (features))
@@ -182,8 +201,16 @@ class Learning_Cain(capture.Cain):
         # print("correction = %f = (%f + %f * %f) - %f" % (correction, reward, self.discount_rate,
         # self.get_mdp_state_value(old_game_state, old_game_state), self.get_qvalue(old_mdp_state, old_game_state, action)))
         for key, value in self.weights.items():
+            if key in {"normalized-score", "cain-dead", "cain-correct-zone"}:
+                continue
             # print("updating [%s: %f]" % (str(key), value))
             newWeight = value + self.learning_rate * correction * features.get(key, 0.0)
+            if math.isnan(newWeight) or math.isinf(newWeight):
+                return
+            if newWeight > 100.0:
+                newWeight = 100.0
+            elif newWeight < -100.0:
+                newWeight = -100.0
             # print("%f = %f + %f * %f * %f" % (newWeight, value, self.learning_rate, correction, features.get(key, 0.0)))
             self.weights[key] = newWeight
 
@@ -198,7 +225,7 @@ class Learning_Abel(capture.Abel):
         # these values are the defaults specified in pacai/agents/mdp.py
         # these aren't controlled by arguments
         self.discount_rate = 0.9
-        self.learning_rate = 0.5
+        self.learning_rate = 0.01
         self.exploration_rate = 0.3
         self.last_state: GameState | None = None
         self.total_rewards: float = 0.0
@@ -283,37 +310,44 @@ class Learning_Abel(capture.Abel):
     def get_action(self, state: GameState) -> action.Action:
         # Update the agent by learning from the environment.
         # This code should not change and always be the first thing done in this method.
+        if self.own_index is None:
+            self.set_indexes(state)
+
         self.update(state)
         # use epilsion to calcuate if I do the policy action or a random one
-        
+
         legal_actions: list[action.Action] = state.get_legal_actions()
-        roll = self.rng.randrange(0, 100)
-        if roll <= self.exploration_rate:
-            # choose random
+
+        if len(legal_actions) == 0:
+            return action.STOP
+
+        if self.training and self.rng.random() < self.exploration_rate:
             a: action.Action = self.rng.choice(legal_actions)
-            # print("Choosing random action " + str(a))
             return a
         else:
-           # our policy is outlined in the parent classes, so just do super
-           return super().get_action(state)
+            # our policy is outlined in the parent classes, so just do super
+            return super().get_action(state)
 
     def get_mdp_state_value(self, game_state: GameState) -> float:
         """Finds the maximum Q-value among all legal actions for a state."""
         # first check if terminal or agent doesn't exist. then I should just be able to return zero and it isn't even an error
         # print("Evaluating " + str(mdp_state))
         # looks toward the future more than the actual agent
+        if game_state.agent_index < 0:
+            return 0.0
         actions: list[action.Action] = game_state.get_legal_actions()
-        print("in get_mdp_state_value:")
-        print("legal actins: %s" % str(actions))
+        # print("in get_mdp_state_value:")
+        # print("legal actins: %s" % str(actions))
         maxValue = float('-inf')
         for a in actions:
             new_state = game_state.generate_successor(a)
             # have to make new state ourselves
             q = self.get_qvalue(game_state, new_state, a)
-            print("%s: %f" % (str(a), q))
+            # print("%s: %f" % (str(a), q))
             if q > maxValue:
                 maxValue = q
         return maxValue
+
 
     def get_qvalue(self, old_state, new_state,
         action: action.Action) -> float:
@@ -340,16 +374,26 @@ class Learning_Abel(capture.Abel):
         else:
             correction: float = ((reward + self.discount_rate * self.get_mdp_state_value(new_game_state))
                             - self.get_qvalue(old_game_state, new_game_state, action))
+        if math.isnan(correction) or math.isinf(correction):
+            return
         # get all of the features
         features = self.feature_extractor(new_game_state) # unlike how pa3 does it, feature extractor wants the new state
         # print("updating state %s:" % (old_game_state.get_agent_position(0)))
         # print("Features: %s" % (features))
         # print("Current weights: %s" % (self.weights))
-        print("correction = %f = (%f + %f * %f) - %f" % (correction, reward, self.discount_rate,
-        self.get_mdp_state_value(new_game_state), self.get_qvalue(old_game_state, new_game_state, action)))
+        # print("correction = %f = (%f + %f * %f) - %f" % (correction, reward, self.discount_rate,
+        # self.get_mdp_state_value(new_game_state), self.get_qvalue(old_game_state, new_game_state, action)))
         for key, value in self.weights.items():
+            if key in {"normalized-score", "abel-dead", "abel-correct-zone"}:
+                continue
             # print("updating [%s: %f]" % (str(key), value))
             newWeight = value + self.learning_rate * correction * features.get(key, 0.0)
-            print("%f = %f + %f * %f * %f" % (newWeight, value, self.learning_rate, correction, features.get(key, 0.0)))
+            if math.isnan(newWeight) or math.isinf(newWeight):
+                return
+            if newWeight > 100.0:
+                newWeight = 100.0
+            elif newWeight < -100.0:
+                newWeight = -100.0
+            # print("%f = %f + %f * %f * %f" % (newWeight, value, self.learning_rate, correction, features.get(key, 0.0)))
             self.weights[key] = newWeight
-        print("new weights are: %s" % str(self.weights))
+        # print("new weights are: %s" % str(self.weights))
